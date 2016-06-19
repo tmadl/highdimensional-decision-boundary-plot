@@ -1,9 +1,11 @@
-import matplotlib.pyplot as plt
+import numpy as np, matplotlib.pyplot as plt
 from sklearn.base import BaseEstimator
-from sklearn.ensemble.forest import RandomForestClassifier
 from sklearn.cross_validation import train_test_split
 from sklearn.decomposition.pca import PCA
 from sklearn.neighbors.unsupervised import NearestNeighbors
+from sklearn.neighbors.classification import KNeighborsClassifier
+import nlopt, random as rnd
+from scipy.spatial.distance import euclidean
 
 def DBPlot(BaseEstimator):
     """
@@ -15,7 +17,7 @@ def DBPlot(BaseEstimator):
     
     Parameters
     ----------
-    estimator : BaseEstimator instance, optional (default=`RandomForestClassifier()`).
+    estimator : BaseEstimator instance, optional (default=`KNeighborsClassifier(n_neighbors=2)`).
         Classifier for which the decision boundary should be plotted. Can be trained
         or untrained (in which case the fit method will train it). Must have
         probability estimates enabled (i.e. `estimator.predict_proba` must work). 
@@ -53,8 +55,11 @@ def DBPlot(BaseEstimator):
     hypersphere_iteration_budget : int, optional (default=300)
         Maximum number of iterations the optimizer is allowed to run for each
         keypoint estimation while looking along hypersphere surfaces
+        
+    verbose: bool, optional (default=True)
+        Verbose output
     """
-    def __init__(self, estimator=RandomForestClassifier(), dimensionality_reduction=PCA(n_components=2), acceptance_threshold=0.03, n_connecting_keypoints=20, n_interpolated_keypoints=50, linear_iteration_budget=100, hypersphere_iteration_budget=300):
+    def __init__(self, estimator=KNeighborsClassifier(n_neighbors=2), dimensionality_reduction=PCA(n_components=2), acceptance_threshold=0.03, n_connecting_keypoints=20, n_interpolated_keypoints=50, linear_iteration_budget=100, hypersphere_iteration_budget=300, verbose=True):
         if acceptance_threshold == 0:
             raise Warning("A nonzero acceptance threshold is strongly recommended so the optimizer can finish in finite time")
         if linear_iteration_budget < 2 or hypersphere_iteration_budget < 2:
@@ -69,13 +74,17 @@ def DBPlot(BaseEstimator):
         self.n_connecting_keypoints = n_connecting_keypoints 
         self.n_interpolated_keypoints = n_interpolated_keypoints
         self.hypersphere_iteration_budget = hypersphere_iteration_budget
+        self.verbose = verbose
         
-    def setmodel(self, estimator=RandomForestClassifier()):
+        self.decision_boundary_points = []
+        self.decision_boundary_points_2d = []
+        
+    def setmodel(self, estimator=KNeighborsClassifier(n_neighbors=2)):
         """Assign model for which decision boundary should be plotted.
 
         Parameters
         ----------
-        estimator : BaseEstimator instance, optional (default=RandomForestClassifier()).
+        estimator : BaseEstimator instance, optional (default=KNeighborsClassifier(n_neighbors=2)).
             Classifier for which the decision boundary should be plotted. Must have
             probability estimates enabled (i.e. estimator.predict_proba must work). 
             Make sure it is possible for probability estimates to get close to 0.5 
@@ -124,6 +133,9 @@ def DBPlot(BaseEstimator):
         except:
             self.model.fit(X[train_idx, :], y[train_idx])
             
+        # decision boundary distance : distance from the region with maximal uncertainty (0.5 prediction probability)
+        self.decision_boundary_distance = lambda x, grad=0: np.abs(0.5-self.model.predict_proba([x])[0][1])
+            
         # fit DR method if necessary
         try:
             self.dimensionality_reduction.transform([X[0]])
@@ -137,10 +149,97 @@ def DBPlot(BaseEstimator):
             
         # transform data
         self.X2d = self.dimensionality_reduction.transform(self.X)
+        self.X2d_xmin, self.X2d_xmax = np.min(self.X2d[:,0]), np.max(self.X2d[:,0])
+        self.X2d_ymin, self.X2d_ymax = np.min(self.X2d[:,1]), np.max(self.X2d[:,1])
+        
+        self.majorityclass = 0 if list(y).count(0) > list(y).count(1) else 1
+        minority_idx, majority_idx = y==self.minorityclass, y==self.majorityclass
+        self.Xminor, self.Xmajor = X[minority_idx], X[majority_idx]
+        self.Xminor2d, self.Xmajor2d = self.X2d[minority_idx], self.X2d[majority_idx]
             
         # set up efficient nearest neighbor models for later use
-        self.nn_model_2d_0class = NearestNeighbors(n_neighbors=1)
-        self.nn_model_2d_0class.fit(self.X2d[self.y==0])
+        self.nn_model_2d_majorityclass = NearestNeighbors(n_neighbors=2)
+        self.nn_model_2d_majorityclass.fit(self.X2d[self.y==self.majorityclass])
         
-        self.nn_model_2d_1class = NearestNeighbors(n_neighbors=1)
-        self.nn_model_2d_1class.fit(self.X2d[self.y==1])
+        self.nn_model_2d_minorityclass = NearestNeighbors(n_neighbors=2)
+        self.nn_model_2d_minorityclass.fit(self.X2d[self.y==self.minorityclass])
+        
+        # step 1. look for decision boundary points between corners of majority & minority class distribution
+        minority_corner_idx, majority_corner_idx = [], []
+        for extremum1 in [np.min, np.max]:
+            for extremum2 in [np.min, np.max]:
+                d, idx = self.nn_model_2d_minorityclass.kneighbors([[extremum1(self.Xminor2d[:,0]), extremum2(self.Xminor2d[:,0])]])
+                minority_corner_idx.append(idx[0][0])
+                d, idx = self.nn_model_2d_minorityclass.kneighbors([[extremum1(self.Xmajor2d[:,1]), extremum2(self.Xmajor2d[:,1])]])
+                majority_corner_idx.append(idx[0][0])
+        
+        self._linear_decision_boundary_optimization(minority_corner_idx, majority_corner_idx, all_combinations=True)
+        
+        # step 2. look for decision boundary points on lines connecting randomly sampled points of majority & minority class
+        from_idx = list(rnd.sample(np.arange(len(self.Xminor)), self.n_connecting_keypoints))
+        to_idx = list(rnd.sample(np.arange(len(self.Xmajor)), self.n_connecting_keypoints))
+        
+        self._linear_decision_boundary_optimization(from_idx, to_idx, all_combinations=False)
+        
+
+    def _linear_decision_boundary_optimization(self, from_idx, to_idx, all_combinations=True, retry_neighbor_if_failed=True):
+        """Use global optimization to locate the decision boundary along lines
+        defined by instances from_idx and to_idx in the dataset (from_idx and to_idx
+        have to contain indices from distinct classes to guarantee the existence of
+        a decision boundary between them!)
+        """
+        optimizer = self._get_optimizer()
+        
+        retries = 4 if retry_neighbor_if_failed else 1
+        for i in range(len(from_idx)):
+            n = range(len(to_idx)) if all_combinations else 1
+            for j in range(n):
+                from_i = from_idx[i]
+                to_i = to_idx[j] if all_combinations else to_idx[i]
+                for k in range(retries):
+                    if k == 0:
+                        fromPoint = self.Xminor[from_i]
+                        toPoint = self.Xmajor[to_i]
+                    else:
+                        # first attempt failed, try nearest neighbors of source and destination point instead
+                        d, idx = self.nn_model_2d_minorityclass.kneighbors([self.Xminor2d[from_i]])
+                        fromPoint = self.Xminor[idx[0][k/2]]
+                        d, idx = self.nn_model_2d_minorityclass.kneighbors([self.Xmajor2d[to_i]])
+                        toPoint = self.Xmajor[idx[0][k%2]]
+                    
+                    if euclidean(fromPoint, toPoint) == 0:
+                        break # no decision boundary between equivalent points
+                
+                    def objective(l, grad=0):
+                        # interpolate between source and destionation; calculate distance from decision boundary
+                        X = fromPoint + l * (toPoint-fromPoint)  
+                        return self.decision_boundary_distance(X)
+                    
+                    optimizer.set_min_objective()
+                    cL = optimizer.optimize([rnd.random()])
+                    cX = fromPoint + cL * (toPoint-fromPoint)
+                    
+                    if self.decision_boundary_distance(cX) <= self.acceptance_threshold:
+                        cX2d = self.dimensionality_reduction.transform([cX])[0]
+                        if cX2d[0] >= self.X2d_xmin and cX2d[0] <= self.X2d_xmax and cX2d[1] >= self.X2d_ymin and cX2d[1] <= self.X2d_ymax: 
+                            self.decision_boundary_points.append(cX)
+                            self.decision_boundary_points_2d.append(cX2d)
+                            print i*len(from_idx)+j,"/",len(from_idx)*n, ": New decision boundary keypoint found using linear optimization!"
+                        else:
+                            print i*len(from_idx)+j,"/",len(from_idx)*n, ": Rejected decision boundary keypoint (outside of plot area)"
+        
+    def _get_optimizer(self, D=1, iteration_budget=None):
+        """Utility function creating an NLOPT optimizer with default
+        parameters depending on this objects parameters
+        """
+        if iteration_budget == None:
+            iteration_budget = self.linear_iteration_budget
+        
+        opt = nlopt.opt(nlopt.GN_DIRECT_L_RAND, D)
+        opt.set_stopval(self.acceptance_threshold/10.0)
+        opt.set_ftol_rel(1e-4)
+        opt.set_maxeval(iteration_budget)
+        opt.set_lower_bounds(0)
+        opt.set_upper_bounds(1)
+        
+        return opt
