@@ -31,13 +31,13 @@ db.plot().show() # use db.plot(generate_testpoints=False).show() to speed up plo
 # decision_boundary_points_2d, testpoints_2d, y_testpoints, background = db.generate_plot() # for custom plotting and analysis
 ```
 
-Core idea:
-![Four steps of plotting a high-dimensional decision boundary](img/dr_model_overview.png)
-
 Functionality and reliability
 ===============
 
 Note: **this is an early stage research project, and work in progress** (it is by no means efficient or well tested)!
+
+The core idea is using **black-box optimization to find keypoints on the decision hypersurface** (those points in high-dimensional space for which prediction probability is very close to 0.5) which lie between the two classes in the 2D plot, and **projecting them to 2D** to estimate the location of the decision boundary. 
+![Four steps of plotting a high-dimensional decision boundary](img/dr_model_overview.png)
 
 Most classifiers exposing `predict_proba` and `predict` methods should work. In terms of dimensionality reduction methods, the current version supports all [matrix decomposition](http://scikit-learn.org/stable/modules/classes.html#module-sklearn.decomposition) variants (including [PCA](http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html#sklearn.decomposition.PCA), [Kernel PCA](http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.KernelPCA.html#sklearn.decomposition.KernelPCA), [NMF](http://scikit-learn.org/stable/modules/generated/sklearn.decomposition.NMF.html#sklearn.decomposition.NMF) etc.), as well as [Isomap](http://scikit-learn.org/stable/modules/generated/sklearn.manifold.Isomap.html#sklearn.manifold.Isomap) embeddings for non-linear dimensionality reduction preserving global topology, and any other method that has an implemented and exposed `transform(X)` function. This can include supervised dimensionality reduction, such as [LDA](http://scikit-learn.org/0.16/modules/generated/sklearn.lda.LDA.html) (with `solver='eigen'`), which projects to the most discriminative axes.
 
