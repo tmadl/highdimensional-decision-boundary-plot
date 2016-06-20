@@ -281,7 +281,7 @@ class DBPlot(BaseEstimator):
         
         return self
 
-    def plot(self, plt=None, generate_background=True, tune_background_model=False, background_resolution=100, scatter_size_scale=1.0, legend=True):
+    def plot(self, plt=None, generate_testpoints=True, generate_background=True, tune_background_model=False, background_resolution=100, scatter_size_scale=1.0, legend=True):
         """Plots the dataset and the identified decision boundary in 2D.
         (If you wish to create custom plots, get the data using generate_plot() and plot it manually)  
         
@@ -289,6 +289,10 @@ class DBPlot(BaseEstimator):
         ----------
         plt : matplotlib.pyplot or axis object (default=matplotlib.pyplot)
             Object to be plotted on
+            
+        generate_testpoints : boolean, optional (default=True)
+            Whether to generate demo points around the estimated decision boundary
+            as a sanity check
         
         generate_background : boolean, optional (default=True)
             Whether to generate faint background plot (using prediction probabilities
@@ -317,10 +321,10 @@ class DBPlot(BaseEstimator):
         if plt == None:
             plt = mplt
         
-        if len(self.background) == 0:
-            self.generate_plot(generate_background, tune_background_model, background_resolution)
-        
-        if generate_background:
+        if len(self.X_testpoints) == 0:
+            self.generate_plot(generate_testpoints=generate_testpoints, generate_background=generate_background, tune_background_model=tune_background_model, background_resolution=background_resolution)
+         
+        if generate_background and generate_testpoints:
             try:
                 plt.imshow(np.flipud(self.background), extent=[self.X2d_xmin, self.X2d_xmax, self.X2d_ymin, self.X2d_ymax], cmap="GnBu", alpha=0.33)
             except Exception, ex:
@@ -329,7 +333,8 @@ class DBPlot(BaseEstimator):
         # decision boundary
         plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600*scatter_size_scale, c='c', marker='p')
         # generated demo points
-        plt.scatter(self.X_testpoints_2d[:,0], self.X_testpoints_2d[:,1], 20*scatter_size_scale, c=['g' if i else 'b' for i in self.y_testpoints], alpha=0.6)
+        if generate_testpoints:
+            plt.scatter(self.X_testpoints_2d[:,0], self.X_testpoints_2d[:,1], 20*scatter_size_scale, c=['g' if i else 'b' for i in self.y_testpoints], alpha=0.6)
         
         # training data
         plt.scatter(self.X2d[self.train_idx,0], self.X2d[self.train_idx,1], 150*scatter_size_scale, \
@@ -422,14 +427,14 @@ class DBPlot(BaseEstimator):
             raise Exception("Please call the fit method first!")
         
         if not generate_testpoints and generate_background:
-            raise Exception("Cannot generate a background without testpoints")
+            print("Warning: cannot generate a background without testpoints")
         
         if len(self.X_testpoints) == 0 and generate_testpoints:
             if self.verbose:
                 print "Generating demo points around decision boundary..."
             self._generate_testpoints()
             
-            if generate_background:
+            if generate_background and generate_testpoints:
                 if tune_background_model:
                     params = {'C': np.power(10, np.linspace(0,2,2)), 'gamma': np.power(10, np.linspace(-2,0,2))}
                     grid = GridSearchCV(SVC(), params, n_jobs=-1 if os.name != 'nt' else 1)
@@ -443,10 +448,12 @@ class DBPlot(BaseEstimator):
                 Z = Z.reshape((background_resolution,background_resolution))
                 self.background = Z
         
-        if generate_background:
+        if generate_background and generate_testpoints:
             return self.decision_boundary_points_2d, self.X_testpoints_2d, self.y_testpoints, Z
-        else:
+        elif generate_testpoints:
             return self.decision_boundary_points_2d, self.X_testpoints_2d, self.y_testpoints
+        else:
+            return self.decision_boundary_points_2d
         
     def _generate_testpoints(self, tries=100):
         """Generate random demo points around decision boundary keypoints 

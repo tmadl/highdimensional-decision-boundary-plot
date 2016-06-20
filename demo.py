@@ -29,7 +29,7 @@ if __name__ == "__main__":
     db = DBPlot(model)
     db.penalties_enabled = False
     db.fit(X, y, training_indices=0.5)
-    db.plot(plt, tune_background_model=True)
+    db.plot(plt, generate_testpoints=False) # set generate_testpoints=False to speed up plotting
     plt.tight_layout(0)
     plt.show()
     

@@ -27,7 +27,7 @@ model = KNeighborsClassifier(n_neighbors=10) # classifier able to produce probab
 
 db = DBPlot(model, PCA(n_components=2))
 db.fit(digits.data, digits.target)
-db.plot().show()
+db.plot().show() # use db.plot(generate_testpoints=False).show() to speed up plotting
 # decision_boundary_points_2d, testpoints_2d, y_testpoints, background = db.generate_plot() # for custom plotting and analysis
 ```
 
