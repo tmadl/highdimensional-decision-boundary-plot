@@ -8,11 +8,11 @@ The usual approach of classifying each vertex of a 2D grid to visualize decision
 Instead, the present method samples from regions in which the given classifier is maximally uncertain (close to 0.5 prediction probability), which are near the decision surface by definition. Subsequently, it projects the decision surface samples (keypoints) into 2D for visualization, and generates and classifies some test points around the estimated decision boundary for validation (see Usage section below).
 
 **Example use case**: visualizing the **effect of regularization parameters**. Left: weakly regularized logistic regression (`C=1e-9`). Higher decision boundary complexity (noisy positions of cyan keypoints), more testing error (red markers). Right: regularized logistic regression (`C=10`). Lower complexity, no testing error. Data: sklearn toy digits (64 dimensions).
-![Digits data - decision boundary comparison](digits_logreg.png)
+![Digits data - decision boundary comparison](img/digits_logreg.png)
 *(Green and blue markers: data points, round markers: training data, square markers: testing data; red highlights: misclassified data points; cyan pentagons: decision boundary keypoints [at which the classifier predicts 0.5 probability])*
 
 **Example use case**: visualizing **overfitting** and **underfitting**. Left: k-nearest neighbor with k=2 neighbors. Overfits: data points misclassified (highlighted in red) due to useless 'squiggles'. Right: over-regularized support vector machine (`C=1`, `gamma=0.07`). Underfits: data points misclassified (highlighted in red) due to overly simplistic, near-linear decision boundary. Data: UCI wine dataset (13 dimensions).
-![Wine data - decision boundary comparison](wine_knn_svc.png)
+![Wine data - decision boundary comparison](img/wine_knn_svc.png)
 
 Usage
 ===============
@@ -32,7 +32,7 @@ db.plot().show()
 ```
 
 Core idea:
-![Four steps of plotting a high-dimensional decision boundary](dr_model_overview.png)
+![Four steps of plotting a high-dimensional decision boundary](img/dr_model_overview.png)
 
 Functionality and reliability
 ===============
