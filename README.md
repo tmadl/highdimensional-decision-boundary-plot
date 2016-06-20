@@ -27,7 +27,7 @@ model = KNeighborsClassifier(n_neighbors=10) # classifier able to produce probab
 
 db = DBPlot(model, PCA(n_components=2))
 db.fit(digits.data, digits.target)
-db.plot().show() # use db.plot(generate_testpoints=False).show() to speed up plotting
+db.plot().show() # use db.plot(generate_testpoints=False).show() to speed up plotting by skipping testpoint generation
 # decision_boundary_points_2d, testpoints_2d, y_testpoints, background = db.generate_plot() # for custom plotting and analysis
 ```
 
@@ -48,7 +48,7 @@ When inspecting graphs and improving your classifier, you can trust
 - Misclassification feedback (red circles around the data points)
 - Generated test data points colored according to your classifier predictions (tiny, faint green and blue points)
 
-Everything else is a rough estimate intended for facilitating intuition, rather than precision; needs to be traded off against runtime.  
+Everything else is a rough estimate intended for facilitating intuition, rather than precision; and needs to be traded off against runtime (set `generate_testpoints=False`, or decrease `n_decision_boundary_keypoints, to decrease runtime).  
 - The decision boundary keypoints (large cyan squares) are guaranteed to lie very close to the decision boundary (depending on the `acceptance_threshold` parameter setting). With very small tolerance, these are fairly reliable, but do NOT provide the full picture (a complete, reliable decision boundary could only be plotted with an infinite number of keypoints). To increase reliability, decrease `acceptance_threshold` or increase the number of decision boundary keypoints
 - The background shading reflects rough probability scores around the decision boundary, estimated from the generated test data points (its accuracy will depend on the number and coverage of these generated data points). As above, it is NOT a full picture (the generated data points do not provide full coverage, and only cover the space between the two classes, not beyond). To increase reliability, increase `n_generated_testpoints_per_keypoint` (or tweak the internal SVC approximating them in order to render the shading)
 
