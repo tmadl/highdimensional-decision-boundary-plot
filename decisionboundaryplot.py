@@ -16,16 +16,18 @@ class DBPlot(BaseEstimator):
     boundaries for trained binary classifiers by using black-box optimization 
     to find regions in which the classifier is maximally uncertain (0.5 prediction
     probability). The total number of keypoints representing the decision boundary
-    will depend on n_connecting_keypoints and n_interpolated_keypoints.
+    will depend on n_connecting_keypoints and n_interpolated_keypoints. Reduce
+    either or both to reduce runtime.
     
     Parameters
     ----------
-    estimator : BaseEstimator instance, optional (default=`KNeighborsClassifier(n_neighbors=8)`).
+    estimator : BaseEstimator instance, optional (default=`KNeighborsClassifier(n_neighbors=10)`).
         Classifier for which the decision boundary should be plotted. Can be trained
         or untrained (in which case the fit method will train it). Must have
         probability estimates enabled (i.e. `estimator.predict_proba` must work). 
         Make sure it is possible for probability estimates to get close to 0.5 
-        (more specifically, as close as specified by acceptance_threshold).
+        (more specifically, as close as specified by acceptance_threshold) - this usally
+        requires setting an even number of neighbors, estimators etc.
     
     dimensionality_reduction : BaseEstimator instance, optional (default=`PCA(n_components=2)`).
         Dimensionality reduction method to help plot the decision boundary in 2D. Can be trained
@@ -62,7 +64,7 @@ class DBPlot(BaseEstimator):
     verbose: bool, optional (default=True)
         Verbose output
     """
-    def __init__(self, estimator=KNeighborsClassifier(n_neighbors=30), dimensionality_reduction=PCA(n_components=2), acceptance_threshold=0.03, n_connecting_keypoints=20, n_interpolated_keypoints=50, n_generated_testpoints_per_keypoint=20, linear_iteration_budget=100, hypersphere_iteration_budget=300, verbose=True):
+    def __init__(self, estimator=KNeighborsClassifier(n_neighbors=10), dimensionality_reduction=PCA(n_components=2), acceptance_threshold=0.03, n_connecting_keypoints=20, n_interpolated_keypoints=50, n_generated_testpoints_per_keypoint=20, linear_iteration_budget=100, hypersphere_iteration_budget=300, verbose=True):
         if acceptance_threshold == 0:
             raise Warning("A nonzero acceptance threshold is strongly recommended so the optimizer can finish in finite time")
         if linear_iteration_budget < 2 or hypersphere_iteration_budget < 2:
@@ -85,12 +87,16 @@ class DBPlot(BaseEstimator):
         self.background = []
         self.steps = 4
         
-    def setclassifier(self, estimator=KNeighborsClassifier(n_neighbors=2)):
+        self.hypersphere_max_retry_budget = 20
+        self.penalties_enabled = True
+        self.random_gap_selection = False
+        
+    def setclassifier(self, estimator=KNeighborsClassifier(n_neighbors=10)):
         """Assign classifier for which decision boundary should be plotted.
 
         Parameters
         ----------
-        estimator : BaseEstimator instance, optional (default=KNeighborsClassifier(n_neighbors=2)).
+        estimator : BaseEstimator instance, optional (default=KNeighborsClassifier(n_neighbors=10)).
             Classifier for which the decision boundary should be plotted. Must have
             probability estimates enabled (i.e. estimator.predict_proba must work). 
             Make sure it is possible for probability estimates to get close to 0.5 
@@ -122,6 +128,8 @@ class DBPlot(BaseEstimator):
         -------
         self : returns an instance of self.
         """
+        if set(np.array(y, dtype=int).tolist()) != set([0,1]):
+            raise Exception("Currently only implemented for binary classification. Make sure you pass in two classes (0 and 1)")
         
         if training_indices == None:
             train_idx = range(len(y))
@@ -133,7 +141,8 @@ class DBPlot(BaseEstimator):
         self.X = X
         self.y = y
         self.train_idx = train_idx
-        self.test_idx = np.setdiff1d(np.arange(len(y)), self.train_idx, assume_unique=True)
+        #self.test_idx = np.setdiff1d(np.arange(len(y)), self.train_idx, assume_unique=False)
+        self.test_idx = list(set(range(len(y))).difference(set(self.train_idx)))
         
         # fit classifier if necessary
         try:
@@ -142,9 +151,6 @@ class DBPlot(BaseEstimator):
             self.classifier.fit(X[train_idx, :], y[train_idx])
             
         self.y_pred = self.classifier.predict(self.X)
-            
-        # decision boundary distance : distance from the region with maximal uncertainty (0.5 prediction probability)
-        self.decision_boundary_distance = lambda x, grad=0: np.abs(0.5-self.classifier.predict_proba([x])[0][1])
             
         # fit DR method if necessary
         try:
@@ -171,10 +177,10 @@ class DBPlot(BaseEstimator):
             
         # set up efficient nearest neighbor models for later use
         self.nn_model_2d_majorityclass = NearestNeighbors(n_neighbors=2)
-        self.nn_model_2d_majorityclass.fit(self.X2d[majority_idx])
+        self.nn_model_2d_majorityclass.fit(self.X2d[majority_idx, :])
         
         self.nn_model_2d_minorityclass = NearestNeighbors(n_neighbors=2)
-        self.nn_model_2d_minorityclass.fit(self.X2d[minority_idx])
+        self.nn_model_2d_minorityclass.fit(self.X2d[minority_idx, :])
         
         # step 1. look for decision boundary points between corners of majority & minority class distribution
         minority_corner_idx, majority_corner_idx = [], []
@@ -185,23 +191,19 @@ class DBPlot(BaseEstimator):
                 _, idx = self.nn_model_2d_majorityclass.kneighbors([[extremum1(self.Xmajor2d[:,0]), extremum2(self.Xmajor2d[:,1])]])
                 majority_corner_idx.append(idx[0][0])
         
-        mplt.scatter(self.X2d[:,0], self.X2d[:,1], c=y)
-        mplt.scatter(self.X2d[minority_corner_idx,0], self.X2d[minority_corner_idx,1], 500, c='c')
-        mplt.scatter(self.X2d[majority_corner_idx,0], self.X2d[majority_corner_idx,1], 500, c='m')
-        mplt.show()
-        
-        # optimize to find new db keypoints 
+        # optimize to find new db keypoints between corners
         self._linear_decision_boundary_optimization(minority_corner_idx, majority_corner_idx, all_combinations=True, step=1)
         
         # step 2. look for decision boundary points on lines connecting randomly sampled points of majority & minority class
         from_idx = list(rnd.sample(np.arange(len(self.Xminor)), self.n_connecting_keypoints))
         to_idx = list(rnd.sample(np.arange(len(self.Xmajor)), self.n_connecting_keypoints))
         
-        # optimize to find new db keypoints 
+        # optimize to find new db keypoints between minority and majority class
         self._linear_decision_boundary_optimization(from_idx, to_idx, all_combinations=False, step=2)
-        
+                
         if len(self.decision_boundary_points_2d)<2:
-            raise Exception("FAILED to find initial decision boundary. Please retry. Increasing the acceptance threshold might help.")
+            print("Failed to find initial decision boundary. Retrying... If this keeps happening, increasing the acceptance threshold might help. Also, make sure the classifier is able to find a point with 0.5 prediction probability (usually requires an even number of estimators/neighbors/etc).")
+            return self.fit(X, y, training_indices)
         
         # step 3. look for decision boundary points between already known db points that are too distant (search on connecting line first, then on surrounding hypersphere surfaces)
         edges, gap_distances, gap_probability_scores = self._get_sorted_db_keypoint_distances() # find gaps
@@ -209,18 +211,21 @@ class DBPlot(BaseEstimator):
         self.nn_model_decision_boundary_points.fit(self.decision_boundary_points)
         
         i = 0
+        retries = 0
         while i < self.n_interpolated_keypoints:
             if self.verbose:
                 print "Step 3/"+str(self.steps)+":",i,"/",self.n_interpolated_keypoints
-            # randomly sample from sorted DB keypoint gaps?
-            # gap_idx = np.random.choice(len(gap_probability_scores), 1, p=gap_probability_scores)[0]
-            # get largest gap
-            gap_idx = 0
+            if self.random_gap_selection:
+                # randomly sample from sorted DB keypoint gaps?
+                gap_idx = np.random.choice(len(gap_probability_scores), 1, p=gap_probability_scores)[0]
+            else:
+                # get largest gap
+                gap_idx = 0
             fromPoint = self.decision_boundary_points[edges[gap_idx][0]]
             toPoint = self.decision_boundary_points[edges[gap_idx][1]]
             
-            # optimize to find new db keypoint
-            dbPoint = self._find_decision_boundary_along_line(fromPoint, toPoint)
+            # optimize to find new db keypoint along line connecting two db keypoints with large gap
+            dbPoint = self._find_decision_boundary_along_line(fromPoint, toPoint, penalizeTangentDistance=self.penalties_enabled)
             
             if self.decision_boundary_distance(dbPoint) > self.acceptance_threshold:
                 if self.verbose:
@@ -230,18 +235,30 @@ class DBPlot(BaseEstimator):
                 if rnd.random > 0.5: # search around either source or target keypoint, with 0.5 probability, hoping to find decision boundary in between
                     fromPoint = toPoint
                     
-                # optimize to find new db keypoint
+                # optimize to find new db keypoint on hypersphere surphase around known keypoint
                 dbPoint = self._find_decision_boundary_on_hypersphere(fromPoint, R)
-                if self.decision_boundary_distance(dbPoint) > self.acceptance_threshold:
+                if self.decision_boundary_distance(dbPoint) <= self.acceptance_threshold:
                     dbPoint2d = self.dimensionality_reduction.transform([dbPoint])[0]
                     self.decision_boundary_points.append(dbPoint)
                     self.decision_boundary_points_2d.append(dbPoint2d)
-                    edges, gap_distances, gap_probability_scores = self._get_sorted_db_keypoint_distances() # find gaps
                     i += 1
-                elif self.verbose:
-                    print "Found point is too distant from decision boundary - retrying..."
+                    retries = 0
+                else:
+                    retries += 1
+                    if retries > self.hypersphere_max_retry_budget:
+                        i += 1
+                        print "Found point is too distant from decision boundary (",self.decision_boundary_distance(dbPoint),"), but retry budget exceeded (",self.hypersphere_max_retry_budget,")"
+                    elif self.verbose:
+                        print "Found point is too distant from decision boundary (",self.decision_boundary_distance(dbPoint),") retrying..."
+                    
             else:
+                dbPoint2d = self.dimensionality_reduction.transform([dbPoint])[0]
+                self.decision_boundary_points.append(dbPoint)
+                self.decision_boundary_points_2d.append(dbPoint2d)
                 i += 1
+                retries = 0
+                
+            edges, gap_distances, gap_probability_scores = self._get_sorted_db_keypoint_distances() # reload gaps
         
         self.decision_boundary_points = np.array(self.decision_boundary_points)
         self.decision_boundary_points_2d = np.array(self.decision_boundary_points_2d)
@@ -288,7 +305,7 @@ class DBPlot(BaseEstimator):
             plt.imshow(np.flipud(self.background), extent=[self.X2d_xmin, self.X2d_xmax, self.X2d_ymin, self.X2d_ymax], cmap="GnBu", alpha=0.33)
         
         # decision boundary
-        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600, c='c', marker='*')
+        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600, c='c', marker='p')
         # generated test points
         plt.scatter(self.X_testpoints_2d[:,0], self.X_testpoints_2d[:,1], 20, c=['g' if i else 'b' for i in self.y_testpoints], alpha=0.5)
         
@@ -311,16 +328,16 @@ class DBPlot(BaseEstimator):
 
         plt.legend(["Estimated decision boundary keypoints", "Generated test data around decision boundary", "Actual data (training set)", "Actual data (test set)"], loc="lower right")
         
-        # decision boundary, in case not visible in background
-        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600, c='c', marker='*', alpha=0.1)
-        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 30, c='c', marker='*', edgecolor='c')
+        # decision boundary keypoints, in case not visible in background
+        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600, c='c', marker='p', alpha=0.1)
+        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 30, c='c', marker='p', edgecolor='c', alpha=0.8)
 
         # minimum spanning tree through decision boundary keypoints
         D = pdist(self.decision_boundary_points_2d)
         edges = minimum_spanning_tree(squareform(D))
         for e in edges:
-            plt.plot([self.decision_boundary_points_2d[e[0],0], self.decision_boundary_points_2d[e[1],0]], [self.decision_boundary_points_2d[e[0],1], self.decision_boundary_points_2d[e[1],1]], ':c', linewidth=4)
-            plt.plot([self.decision_boundary_points_2d[e[0],0], self.decision_boundary_points_2d[e[1],0]], [self.decision_boundary_points_2d[e[0],1], self.decision_boundary_points_2d[e[1],1]], ':k', linewidth=1)
+            plt.plot([self.decision_boundary_points_2d[e[0],0], self.decision_boundary_points_2d[e[1],0]], [self.decision_boundary_points_2d[e[0],1], self.decision_boundary_points_2d[e[1],1]], '--c', linewidth=4)
+            plt.plot([self.decision_boundary_points_2d[e[0],0], self.decision_boundary_points_2d[e[1],0]], [self.decision_boundary_points_2d[e[0],1], self.decision_boundary_points_2d[e[1],1]], '--k', linewidth=1)
             
         if self.verbose:
             print "Plot successfully generated! Don't forget to call the show() method to display it"
@@ -419,32 +436,54 @@ class DBPlot(BaseEstimator):
                 cRadius = radius
                 for try_j in range(tries):
                     testpoint = np.random.normal(self.decision_boundary_points[i], radius, (1,self.X.shape[1]))
-                    testpoint2d = self.dimensionality_reduction.transform(testpoint)[0]
+                    try:
+                        testpoint2d = self.dimensionality_reduction.transform(testpoint)[0]
+                    except: # DR can fail e.g. if NMF gets negative values
+                        testpoint = None
+                        continue
                     if euclidean(testpoint2d, self.decision_boundary_points_2d[i]) <= maxRadius:
                         break
                     cRadius /= 2.0
-                testpoint_class = self.classifier.predict(testpoint)[0]
-                if len(classes) == 0:
-                    testpoints = np.vstack((testpoints, testpoint))
-                    classes.append(testpoint_class)
-                elif classes[0] != testpoint_class:
-                    testpoints = np.vstack((testpoints, testpoint))
-                    break
+                if testpoint != None:
+                    testpoint_class = self.classifier.predict(testpoint)[0]
+                    if len(classes) == 0:
+                        testpoints = np.vstack((testpoints, testpoint))
+                        classes.append(testpoint_class)
+                    elif classes[0] != testpoint_class:
+                        testpoints = np.vstack((testpoints, testpoint))
+                        break
                 
             # add other points
             for j in range(self.n_generated_testpoints_per_keypoint - 2):
                 cRadius = radius
                 for try_i in range(tries):
                     testpoint = np.random.normal(self.decision_boundary_points[i], radius, (1,self.X.shape[1]))
-                    testpoint2d = self.dimensionality_reduction.transform(testpoint)[0]
+                    try:
+                        testpoint2d = self.dimensionality_reduction.transform(testpoint)[0]
+                    except: # DR can fail e.g. if NMF gets negative values
+                        testpoint = None
+                        continue
                     if euclidean(testpoint2d, self.decision_boundary_points_2d[i]) <= maxRadius:
                         break
                     cRadius /= 2.0
-                testpoints = np.vstack((testpoints, testpoint))
+                if testpoint != None:
+                    testpoints = np.vstack((testpoints, testpoint))
                 
             self.X_testpoints = np.vstack((self.X_testpoints, testpoints))
             self.y_testpoints = np.hstack((self.y_testpoints, self.classifier.predict(testpoints)))
             self.X_testpoints_2d = self.dimensionality_reduction.transform(self.X_testpoints)
+            
+        idx_within_bounds = np.where((self.X_testpoints_2d[:,0]>=self.X2d_xmin)&(self.X_testpoints_2d[:,0]<=self.X2d_xmax)\
+                              &(self.X_testpoints_2d[:,1]>=self.X2d_ymin)&(self.X_testpoints_2d[:,1]<=self.X2d_ymax))[0]
+        self.X_testpoints = self.X_testpoints[idx_within_bounds]
+        self.y_testpoints = self.y_testpoints[idx_within_bounds]
+        self.X_testpoints_2d = self.X_testpoints_2d[idx_within_bounds]
+        
+    def decision_boundary_distance(self, x, grad=0):
+        """Returns the distance of the given point from the decision boundary,
+        i.e. the distance from the region with maximal uncertainty (0.5 
+        prediction probability)"""
+        return np.abs(0.5-self.classifier.predict_proba([x])[0][1])
         
     def get_decision_boundary_keypoints(self):
         """Returns the arrays of located decision boundary keypoints (both in the 
@@ -474,7 +513,7 @@ class DBPlot(BaseEstimator):
         edged = np.array([euclidean(self.decision_boundary_points_2d[u], self.decision_boundary_points_2d[v]) for u,v in edges])
         gap_edge_idx = np.argsort(edged)[::-1][:N]
         edges = edges[gap_edge_idx]
-        gap_distances = edged[gap_edge_idx]
+        gap_distances = np.square(edged[gap_edge_idx])
         gap_probability_scores = gap_distances / np.sum(gap_distances)
         return edges, gap_distances, gap_probability_scores
 
@@ -506,7 +545,7 @@ class DBPlot(BaseEstimator):
                     if euclidean(fromPoint, toPoint) == 0:
                         break # no decision boundary between equivalent points
                 
-                    dbPoint = self._find_decision_boundary_along_line(fromPoint, toPoint)
+                    dbPoint = self._find_decision_boundary_along_line(fromPoint, toPoint, penalizeTangentDistance=self.penalties_enabled, penalizeExtremes=self.penalties_enabled)
                     
                     if self.decision_boundary_distance(dbPoint) <= self.acceptance_threshold:
                         dbPoint2d = self.dimensionality_reduction.transform([dbPoint])[0]
@@ -514,36 +553,51 @@ class DBPlot(BaseEstimator):
                             self.decision_boundary_points.append(dbPoint)
                             self.decision_boundary_points_2d.append(dbPoint2d)
                             if self.verbose and not suppress_output:
-                                print step_str,i*n+j,"/",len(from_idx)*n, ": New decision boundary keypoint found using linear optimization!"
+                                print step_str,i*n+j,"/",len(from_idx)*n#, ": New decision boundary keypoint found using linear optimization!"
+                            break
                         else:
                             if self.verbose and not suppress_output:
                                 print step_str,i*n+j,"/",len(from_idx)*n, ": Rejected decision boundary keypoint (outside of plot area)"
         
-    def _find_decision_boundary_along_line(self, fromPoint, toPoint, penalizeExtremes=False):
+    def _find_decision_boundary_along_line(self, fromPoint, toPoint, penalizeExtremes=False, penalizeTangentDistance=False):
         def objective(l, grad=0):
             # interpolate between source and destionation; calculate distance from decision boundary
-            X = fromPoint + l * (toPoint-fromPoint)
+            X = fromPoint + l[0] * (toPoint-fromPoint)
+            error = self.decision_boundary_distance(X)
+            
+            if penalizeTangentDistance:
+                # distance from tangent between class1 and class0 point in 2d space
+                x0, y0 = self.dimensionality_reduction.transform([X])[0]
+                x1, y1 = self.dimensionality_reduction.transform([fromPoint])[0]
+                x2, y2 = self.dimensionality_reduction.transform([toPoint])[0]
+                error += 1e-12 * np.abs((y2-y1)*x0-(x2-x1)*y0+x2*y1-y2*x1) / np.sqrt((y2-y1)**2+(x2-x1)**2)
+            
             if penalizeExtremes:
-                return 1e-8*np.abs(0.5-l) + self.decision_boundary_distance(X)
-            else:
-                return self.decision_boundary_distance(X)
+                error += 1e-8 * np.abs(0.5-l[0]) 
+            
+            return error
             
         optimizer = self._get_optimizer()
         optimizer.set_min_objective(objective)
         cL = optimizer.optimize([rnd.random()])
-        dbPoint = fromPoint + cL * (toPoint-fromPoint)
+        dbPoint = fromPoint + cL[0] * (toPoint-fromPoint)
         return dbPoint
     
-    def _find_decision_boundary_on_hypersphere(self, centroid, R):
+    def _find_decision_boundary_on_hypersphere(self, centroid, R, penalizeKnown=False):
         def objective(phi, grad=0):
             # search on hypersphere surface in polar coordinates - map back to cartesian
             cX = centroid + polar_to_cartesian(phi, R)
-            cX2d = self.dimensionality_reduction.transform([cX])[0]
-            error = self.decision_boundary_distance(cX)
-            # slight penalty for being too close to already known decision boundary keypoints
-            db_distances = [euclidean(cX2d, self.decision_boundary_points_2d[k]) for k in range(len(self.decision_boundary_points_2d))]
-            error += 1e-8 * ((self.mean_2d_dist - np.min(db_distances))/self.mean_2d_dist)**2
-            return error
+            try:
+                cX2d = self.dimensionality_reduction.transform([cX])[0]
+                error = self.decision_boundary_distance(cX)
+                if penalizeKnown:
+                    # slight penalty for being too close to already known decision boundary keypoints
+                    db_distances = [euclidean(cX2d, self.decision_boundary_points_2d[k]) for k in range(len(self.decision_boundary_points_2d))]
+                    error += 1e-8 * ((self.mean_2d_dist - np.min(db_distances))/self.mean_2d_dist)**2
+                return error
+            except Exception,ex:
+                print "Error in objective function:",ex
+                return np.infty
             
         optimizer = self._get_optimizer(D=self.X.shape[1]-1, upper_bound=2*np.pi, iteration_budget=self.hypersphere_iteration_budget)
         optimizer.set_min_objective(objective)
@@ -559,8 +613,8 @@ class DBPlot(BaseEstimator):
             iteration_budget = self.linear_iteration_budget
         
         opt = nlopt.opt(nlopt.GN_DIRECT_L_RAND, D)
-        opt.set_stopval(self.acceptance_threshold/10.0)
-        opt.set_ftol_rel(1e-4)
+        #opt.set_stopval(self.acceptance_threshold/10.0)
+        opt.set_ftol_rel(1e-5)
         opt.set_maxeval(iteration_budget)
         opt.set_lower_bounds(0)
         opt.set_upper_bounds(upper_bound)
