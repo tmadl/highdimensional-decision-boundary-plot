@@ -1,4 +1,5 @@
-import numpy as np, matplotlib.pyplot as mplt
+import numpy as np, matplotlib.pyplot as mplt, os
+from scipy.stats import itemfreq
 from sklearn.base import BaseEstimator
 from sklearn.cross_validation import train_test_split
 from sklearn.decomposition.pca import PCA
@@ -9,6 +10,7 @@ from scipy.spatial.distance import euclidean, squareform, pdist
 from utils import minimum_spanning_tree, polar_to_cartesian
 from sklearn.grid_search import GridSearchCV
 from sklearn.svm.classes import SVC
+from sklearn.metrics.classification import accuracy_score, f1_score
 
 class DBPlot(BaseEstimator):
     """
@@ -39,16 +41,22 @@ class DBPlot(BaseEstimator):
         Maximum allowed deviation from decision boundary (defined as the region 
         with 0.5 prediction probability) when accepting decision boundary keypoints
         
-    n_connecting_keypoints : int, optional (default=20)
+    n_decision_boundary_keypoints : int, optional (default=60)
+        Total number of decision boundary keypoints added, including both connecting
+        and interpolated keypoints. 
+        
+    n_connecting_keypoints : int, optional (default=None)
         Number of decision boundary keypoints estimated along lines connecting
         instances from two different classes (each such line must cross the 
-        decision boundary at least once). 
+        decision boundary at least once). If None (default), it is set to 1/3
+        of n_decision_boundary_keypoints
         
-    n_interpolated_keypoints : int, optional (default=50)
+    n_interpolated_keypoints : int, optional (default=None)
         Number of decision boundary keypoints interpolated between connecting
-        keypoints to increase keypoint density.  
+        keypoints to increase keypoint density. If None (default), it is set to
+        2/3 of n_decision_boundary_keypoints
         
-    n_generated_testpoints_per_keypoint : int, optional (default=20)
+    n_generated_testpoints_per_keypoint : int, optional (default=15)
         Number of test points generated around decision boundary keypoints, and 
         labeled according to the specified classifier, in order to enrich and 
         validate the decision boundary plot
@@ -64,7 +72,7 @@ class DBPlot(BaseEstimator):
     verbose: bool, optional (default=True)
         Verbose output
     """
-    def __init__(self, estimator=KNeighborsClassifier(n_neighbors=10), dimensionality_reduction=PCA(n_components=2), acceptance_threshold=0.03, n_connecting_keypoints=20, n_interpolated_keypoints=50, n_generated_testpoints_per_keypoint=20, linear_iteration_budget=100, hypersphere_iteration_budget=300, verbose=True):
+    def __init__(self, estimator=KNeighborsClassifier(n_neighbors=10), dimensionality_reduction=PCA(n_components=2), acceptance_threshold=0.03, n_decision_boundary_keypoints=60, n_connecting_keypoints=None, n_interpolated_keypoints=None, n_generated_testpoints_per_keypoint=15, linear_iteration_budget=100, hypersphere_iteration_budget=300, verbose=True):
         if acceptance_threshold == 0:
             raise Warning("A nonzero acceptance threshold is strongly recommended so the optimizer can finish in finite time")
         if linear_iteration_budget < 2 or hypersphere_iteration_budget < 2:
@@ -73,9 +81,14 @@ class DBPlot(BaseEstimator):
         self.classifier = estimator
         self.dimensionality_reduction = dimensionality_reduction
         self.acceptance_threshold = acceptance_threshold
+        
+        if n_decision_boundary_keypoints and n_connecting_keypoints and n_interpolated_keypoints and n_connecting_keypoints+n_interpolated_keypoints != n_decision_boundary_keypoints:
+            raise Exception("n_connecting_keypoints and n_interpolated_keypoints must sum to n_decision_boundary_keypoints (set them to None to use calculated suggestions)")
+        
+        self.n_connecting_keypoints = n_connecting_keypoints if n_connecting_keypoints != None else n_decision_boundary_keypoints/3 
+        self.n_interpolated_keypoints = n_interpolated_keypoints if n_interpolated_keypoints != None else n_decision_boundary_keypoints*2/3
+        
         self.linear_iteration_budget = linear_iteration_budget
-        self.n_connecting_keypoints = n_connecting_keypoints 
-        self.n_interpolated_keypoints = n_interpolated_keypoints
         self.n_generated_testpoints_per_keypoint = n_generated_testpoints_per_keypoint
         self.hypersphere_iteration_budget = hypersphere_iteration_budget
         self.verbose = verbose
@@ -85,7 +98,7 @@ class DBPlot(BaseEstimator):
         self.X_testpoints = []
         self.y_testpoints = []
         self.background = []
-        self.steps = 4
+        self.steps = 3
         
         self.hypersphere_max_retry_budget = 20
         self.penalties_enabled = True
@@ -268,7 +281,7 @@ class DBPlot(BaseEstimator):
         
         return self
 
-    def plot(self, plt=None, generate_background=True, tune_background_model=False, background_resolution=100):
+    def plot(self, plt=None, generate_background=True, tune_background_model=False, background_resolution=100, scatter_size_scale=1.0, legend=True):
         """Plots the dataset and the identified decision boundary in 2D.
         (If you wish to create custom plots, get the data using generate_plot() and plot it manually)  
         
@@ -289,6 +302,12 @@ class DBPlot(BaseEstimator):
         background_resolution : int, optional (default=100)
             Desired resolution (height and width) of background to be generated
             
+        scatter_size_scale : float, optional (default=1.0)
+            Scaling factor for scatter plot marker size
+            
+        legend : boolean, optional (default=False)
+            Whether to display a legend 
+            
         Returns
         -------
         plt : The matplotlib.pyplot or axis object which has been passed in, after
@@ -302,54 +321,71 @@ class DBPlot(BaseEstimator):
             self.generate_plot(generate_background, tune_background_model, background_resolution)
         
         if generate_background:
-            plt.imshow(np.flipud(self.background), extent=[self.X2d_xmin, self.X2d_xmax, self.X2d_ymin, self.X2d_ymax], cmap="GnBu", alpha=0.33)
+            try:
+                plt.imshow(np.flipud(self.background), extent=[self.X2d_xmin, self.X2d_xmax, self.X2d_ymin, self.X2d_ymax], cmap="GnBu", alpha=0.33)
+            except Exception, ex:
+                print "Failed to render image background"
         
         # decision boundary
-        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600, c='c', marker='p')
+        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600*scatter_size_scale, c='c', marker='p')
         # generated test points
-        plt.scatter(self.X_testpoints_2d[:,0], self.X_testpoints_2d[:,1], 20, c=['g' if i else 'b' for i in self.y_testpoints], alpha=0.5)
+        plt.scatter(self.X_testpoints_2d[:,0], self.X_testpoints_2d[:,1], 20*scatter_size_scale, c=['g' if i else 'b' for i in self.y_testpoints], alpha=0.6)
         
         # training data
-        plt.scatter(self.X2d[self.train_idx,0], self.X2d[self.train_idx,1], 150, \
+        plt.scatter(self.X2d[self.train_idx,0], self.X2d[self.train_idx,1], 150*scatter_size_scale, \
                     facecolor=['g' if i else 'b' for i in self.y[self.train_idx]], \
                     edgecolor = ['g' if self.y_pred[self.train_idx[i]]==self.y[self.train_idx[i]]==1 \
                                         else ('b' if self.y_pred[self.train_idx[i]]==self.y[self.train_idx[i]]==0 else 'r') \
-                                for i in range(len(self.train_idx))], linewidths=5)
+                                for i in range(len(self.train_idx))], linewidths=5*scatter_size_scale)
         # testing data
-        plt.scatter(self.X2d[self.test_idx,0], self.X2d[self.test_idx,1], 150, \
+        plt.scatter(self.X2d[self.test_idx,0], self.X2d[self.test_idx,1], 150*scatter_size_scale, \
                     facecolor=['g' if i else 'b' for i in self.y[self.test_idx]], \
                     edgecolor = ['g' if self.y_pred[self.test_idx[i]]==self.y[self.test_idx[i]]==1 \
                                         else ('b' if self.y_pred[self.test_idx[i]]==self.y[self.test_idx[i]]==0 else 'r') \
-                                for i in range(len(self.test_idx))], linewidths=5, marker='s')
+                                for i in range(len(self.test_idx))], linewidths=5*scatter_size_scale, marker='s')
         
         # label data points with their indices
         for i in range(len(self.X2d)):
             plt.text(self.X2d[i,0]+(self.X2d_xmax-self.X2d_xmin)*0.5e-2, self.X2d[i,1]+(self.X2d_ymax-self.X2d_ymin)*0.5e-2, str(i), size=8)
 
-        plt.legend(["Estimated decision boundary keypoints", "Generated test data around decision boundary", "Actual data (training set)", "Actual data (test set)"], loc="lower right")
+        if legend:
+            plt.legend(["Estimated decision boundary keypoints", "Generated test data around decision boundary", "Actual data (training set)", "Actual data (test set)"], loc="lower right", prop={'size':9})
         
         # decision boundary keypoints, in case not visible in background
-        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600, c='c', marker='p', alpha=0.1)
-        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 30, c='c', marker='p', edgecolor='c', alpha=0.8)
+        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600*scatter_size_scale, c='c', marker='p', alpha=0.1)
+        plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 30*scatter_size_scale, c='c', marker='p', edgecolor='c', alpha=0.8)
 
         # minimum spanning tree through decision boundary keypoints
         D = pdist(self.decision_boundary_points_2d)
         edges = minimum_spanning_tree(squareform(D))
         for e in edges:
-            plt.plot([self.decision_boundary_points_2d[e[0],0], self.decision_boundary_points_2d[e[1],0]], [self.decision_boundary_points_2d[e[0],1], self.decision_boundary_points_2d[e[1],1]], '--c', linewidth=4)
+            plt.plot([self.decision_boundary_points_2d[e[0],0], self.decision_boundary_points_2d[e[1],0]], [self.decision_boundary_points_2d[e[0],1], self.decision_boundary_points_2d[e[1],1]], '--c', linewidth=4*scatter_size_scale)
             plt.plot([self.decision_boundary_points_2d[e[0],0], self.decision_boundary_points_2d[e[1],0]], [self.decision_boundary_points_2d[e[0],1], self.decision_boundary_points_2d[e[1],1]], '--k', linewidth=1)
+            
+        if len(self.test_idx) == 0:
+            print "No test performance calculated, as no testing data was specified"
+        else:
+            freq = itemfreq(self.y[self.test_idx]).astype(float)
+            imbalance = np.round(np.max((freq[0,1],freq[1,1]))/len(self.test_idx),3)
+            acc_score = np.round(accuracy_score(self.y[self.test_idx], self.y_pred[self.test_idx]), 3)
+            f1 = np.round(f1_score(self.y[self.test_idx], self.y_pred[self.test_idx]), 3)
+            plt.title("Test accuracy: "+str(acc_score)+", F1 score: "+str(f1)+". Imbalance (max chance accuracy): "+str(imbalance))
             
         if self.verbose:
             print "Plot successfully generated! Don't forget to call the show() method to display it"
             
         return plt
         
-    def generate_plot(self, generate_background=True, tune_background_model=False, background_resolution=100):
+    def generate_plot(self, generate_testpoints=True, generate_background=True, tune_background_model=False, background_resolution=100):
         """Generates and returns arrays for visualizing the dataset and the 
         identified decision boundary in 2D. 
         
         Parameters
         ----------
+        generate_testpoints : boolean, optional (default=True)
+            Whether to generate test points around the estimated decision boundary
+            as a sanity check
+        
         generate_background : boolean, optional (default=True)
             Whether to generate faint background plot (using prediction probabilities
             of a fitted suppor vector machine, trained on generated test points) 
@@ -385,7 +421,10 @@ class DBPlot(BaseEstimator):
         if len(self.decision_boundary_points) == 0:
             raise Exception("Please call the fit method first!")
         
-        if len(self.X_testpoints) == 0:
+        if not generate_testpoints and generate_background:
+            raise Exception("Cannot generate a background without testpoints")
+        
+        if len(self.X_testpoints) == 0 and generate_testpoints:
             if self.verbose:
                 print "Generating test points around decision boundary..."
             self._generate_testpoints()
@@ -393,7 +432,8 @@ class DBPlot(BaseEstimator):
             if generate_background:
                 if tune_background_model:
                     params = {'C': np.power(10, np.linspace(0,2,2)), 'gamma': np.power(10, np.linspace(-2,0,2))}
-                    grid = GridSearchCV(SVC(), params, n_jobs=-1).fit(np.vstack((self.X2d[self.train_idx], self.X_testpoints_2d)), np.hstack((self.y[self.train_idx], self.y_testpoints)))
+                    grid = GridSearchCV(SVC(), params, n_jobs=-1 if os.name != 'nt' else 1)
+                    grid.fit(np.vstack((self.X2d[self.train_idx], self.X_testpoints_2d)), np.hstack((self.y[self.train_idx], self.y_testpoints)))
                     bestparams = grid.best_params_
                 else:
                     bestparams = {'C':1, 'gamma':1}
@@ -416,61 +456,51 @@ class DBPlot(BaseEstimator):
         
         nn_model_2d = NearestNeighbors(n_neighbors=2)
         nn_model_2d.fit(self.decision_boundary_points_2d)
-        maxRadius = 2*np.max([nn_model_2d.kneighbors([self.decision_boundary_points_2d[i]])[0][0][1] for i in range(len(self.decision_boundary_points_2d))])
+        #maxRadius = 2*np.max([nn_model_2d.kneighbors([self.decision_boundary_points_2d[i]])[0][0][1] for i in range(len(self.decision_boundary_points_2d))])
         
         self.X_testpoints = np.zeros((0, self.X.shape[1]))
         self.y_testpoints = []
         for i in range(len(self.decision_boundary_points)):
             if self.verbose:
-                print "Generating testpoint ",i,"/",len(self.decision_boundary_points)
+                print "Generating testpoint for plotting",i,"/",len(self.decision_boundary_points)
             testpoints = np.zeros((0, self.X.shape[1]))
             # generate Np points in Gaussian around decision_boundary_points[i] with radius depending on the distance to the next point
             d, idx = nn_model.kneighbors([self.decision_boundary_points[i]])
             radius = d[0][1] if d[0][1] != 0 else d[0][2]
             if radius == 0:
-                radius = np.mean(pdist(self.decision_boundary_points))
+                radius = np.mean(pdist(self.decision_boundary_points_2d))
+            maxRadius = radius * 2
+            radius /= 5.0
                 
-            # find at least one point in each class
-            classes = []
-            for try_i in range(tries):
-                cRadius = radius
-                for try_j in range(tries):
-                    testpoint = np.random.normal(self.decision_boundary_points[i], radius, (1,self.X.shape[1]))
-                    try:
-                        testpoint2d = self.dimensionality_reduction.transform(testpoint)[0]
-                    except: # DR can fail e.g. if NMF gets negative values
-                        testpoint = None
-                        continue
-                    if euclidean(testpoint2d, self.decision_boundary_points_2d[i]) <= maxRadius:
-                        break
-                    cRadius /= 2.0
-                if testpoint != None:
-                    testpoint_class = self.classifier.predict(testpoint)[0]
-                    if len(classes) == 0:
-                        testpoints = np.vstack((testpoints, testpoint))
-                        classes.append(testpoint_class)
-                    elif classes[0] != testpoint_class:
-                        testpoints = np.vstack((testpoints, testpoint))
-                        break
-                
-            # add other points
+            # add test points, keeping some balance
+            max_imbalance = 5.0
+            y_testpoints = []
             for j in range(self.n_generated_testpoints_per_keypoint - 2):
                 cRadius = radius
+                freq = itemfreq(y_testpoints).astype(float)
+                imbalanced = freq.shape[0] != 0
+                if freq.shape[0] == 2 and (freq[0,1]/freq[1,1] < 1.0/max_imbalance or freq[0,1]/freq[1,1] > max_imbalance):
+                    imbalanced = True 
                 for try_i in range(tries):
                     testpoint = np.random.normal(self.decision_boundary_points[i], radius, (1,self.X.shape[1]))
                     try:
                         testpoint2d = self.dimensionality_reduction.transform(testpoint)[0]
                     except: # DR can fail e.g. if NMF gets negative values
-                        testpoint = None
+                        testpoint = []
                         continue
-                    if euclidean(testpoint2d, self.decision_boundary_points_2d[i]) <= maxRadius:
-                        break
+                    if euclidean(testpoint2d, self.decision_boundary_points_2d[i]) <= maxRadius: # test point needs to be close to current key point
+                        if not imbalanced: # needs to be not imbalanced
+                            break
+                        y_pred = self.classifier.predict(testpoint)[0]
+                        if freq.shape[0] == 2 and freq[y_pred, 1] < freq[1-y_pred, 1]: # imbalanced but this would actually improve things
+                            break 
                     cRadius /= 2.0
-                if testpoint != None:
+                if len(testpoint) != 0:
                     testpoints = np.vstack((testpoints, testpoint))
+                    y_testpoints.append(self.classifier.predict(testpoint)[0])
                 
             self.X_testpoints = np.vstack((self.X_testpoints, testpoints))
-            self.y_testpoints = np.hstack((self.y_testpoints, self.classifier.predict(testpoints)))
+            self.y_testpoints = np.hstack((self.y_testpoints, y_testpoints))
             self.X_testpoints_2d = self.dimensionality_reduction.transform(self.X_testpoints)
             
         idx_within_bounds = np.where((self.X_testpoints_2d[:,0]>=self.X2d_xmin)&(self.X_testpoints_2d[:,0]<=self.X2d_xmax)\

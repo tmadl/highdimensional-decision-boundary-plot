@@ -1,23 +1,53 @@
 import uci_loader, numpy as np
 from decisionboundaryplot import DBPlot
 from sklearn.ensemble.forest import RandomForestClassifier
-from sklearn.preprocessing.data import normalize
 from sklearn.linear_model.logistic import LogisticRegression
 from sklearn.datasets.base import load_digits
-from sklearn.manifold.isomap import Isomap
-from sklearn import lda
-from sklearn.decomposition.nmf import NMF
+import matplotlib.pyplot as plt
+from sklearn.learning_curve import learning_curve
+from numpy.random.mtrand import permutation
 from sklearn.svm.classes import SVC
+from sklearn.neighbors.classification import KNeighborsClassifier
 
-X, y = uci_loader.getdataset('wine')
-if np.min(X)<0:
-    X -= np.min(X)
-print np.min(X)
-#data = load_digits(n_class = 2)
-#X = data.data
-#y = data.target
-y[y!=0] = 1
+digits = load_digits(n_class = 2)
+model = KNeighborsClassifier(n_neighbors=10)
+db = DBPlot(model)
+db.fit(digits.data, digits.target)
+db.plot().show()
 
-db = DBPlot(SVC(probability=True))#, NMF(n_components=2)) # lda.LDA(solver='eigen', n_components=2))
-db.fit(X, y, training_indices=0.5)
-db.plot(tune_background_model=True).show()
+if __name__ == "__main__":
+    # load data
+    X, y = uci_loader.getdataset('wine')
+    #data = load_digits(n_class = 2)
+    #X,y = data.data, data.target
+    y[y!=0] = 1
+    
+    # shuffle data
+    random_idx = permutation(np.arange(len(y)))
+    X = X[random_idx]
+    y = y[random_idx]
+    
+    # create model
+    #model = LogisticRegression(C=1)
+    model = SVC(C=0.1, gamma=0.1, probability=True)
+    #model = RandomForestClassifier(n_estimators=10)
+    
+    # plot high-dimensional decision boundary
+    db = DBPlot(model)
+    db.penalties_enabled = False
+    db.fit(X, y, training_indices=0.5)
+    db.plot(plt, tune_background_model=True)
+    plt.tight_layout(0)
+    plt.show()
+    
+    #plot learning curves for comparison
+    N = 10
+    train_sizes, train_scores, test_scores = \
+        learning_curve(model, X, y, cv=5, train_sizes=np.linspace(.2, 1.0, N))
+    plt.errorbar(train_sizes, np.mean(train_scores, axis=1), np.std(train_scores, axis=1)/np.sqrt(N))
+    plt.errorbar(train_sizes, np.mean(test_scores, axis=1), np.std(test_scores, axis=1)/np.sqrt(N), c='r')
+    plt.legend(["Accuracies on training set", "Accuracies on test set"])
+    plt.xlabel("Proportion of dataset used for training")
+    plt.title(str(model))
+    plt.tight_layout(0)
+    plt.show()
