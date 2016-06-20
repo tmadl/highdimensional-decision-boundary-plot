@@ -442,6 +442,7 @@ class DBPlot(BaseEstimator):
                     bestparams = grid.best_params_
                 else:
                     bestparams = {'C':1, 'gamma':1}
+                    
                 self.background_model = SVC(probability=True, C=bestparams['C'], gamma=bestparams['gamma']).fit(np.vstack((self.X2d[self.train_idx], self.X_testpoints_2d)), np.hstack((self.y[self.train_idx], self.y_testpoints)))
                 xx, yy = np.meshgrid(np.linspace(self.X2d_xmin, self.X2d_xmax, background_resolution), np.linspace(self.X2d_ymin, self.X2d_ymax, background_resolution))
                 Z = self.background_model.predict_proba(np.c_[xx.ravel(), yy.ravel()])[:,0]
@@ -488,6 +489,7 @@ class DBPlot(BaseEstimator):
                 imbalanced = freq.shape[0] != 0
                 if freq.shape[0] == 2 and (freq[0,1]/freq[1,1] < 1.0/max_imbalance or freq[0,1]/freq[1,1] > max_imbalance):
                     imbalanced = True 
+                    
                 for try_i in range(tries):
                     testpoint = np.random.normal(self.decision_boundary_points[i], radius, (1,self.X.shape[1]))
                     try:

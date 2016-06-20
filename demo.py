@@ -11,7 +11,7 @@ from sklearn.neighbors.classification import KNeighborsClassifier
 
 if __name__ == "__main__":
     # load data
-    X, y = uci_loader.getdataset('wine')
+    X, y = uci_loader.getdataset('heart')
     #data = load_digits(n_class = 2)
     #X,y = data.data, data.target
     y[y!=0] = 1
@@ -27,20 +27,18 @@ if __name__ == "__main__":
     
     # plot high-dimensional decision boundary
     db = DBPlot(model)
-    db.penalties_enabled = False
     db.fit(X, y, training_indices=0.5)
     db.plot(plt, generate_testpoints=True) # set generate_testpoints=False to speed up plotting
-    plt.tight_layout(0)
     plt.show()
     
     #plot learning curves for comparison
     N = 10
-    train_sizes, train_scores, test_scores = \
-        learning_curve(model, X, y, cv=5, train_sizes=np.linspace(.2, 1.0, N))
+    train_sizes, train_scores, test_scores = learning_curve(model, X, y, cv=5, train_sizes=np.linspace(.2, 1.0, N))
+    
     plt.errorbar(train_sizes, np.mean(train_scores, axis=1), np.std(train_scores, axis=1)/np.sqrt(N))
     plt.errorbar(train_sizes, np.mean(test_scores, axis=1), np.std(test_scores, axis=1)/np.sqrt(N), c='r')
+    
     plt.legend(["Accuracies on training set", "Accuracies on test set"])
-    plt.xlabel("Proportion of dataset used for training")
+    plt.xlabel("Number of data points")
     plt.title(str(model))
-    plt.tight_layout(0)
     plt.show()
