@@ -9,12 +9,6 @@ from numpy.random.mtrand import permutation
 from sklearn.svm.classes import SVC
 from sklearn.neighbors.classification import KNeighborsClassifier
 
-digits = load_digits(n_class = 2)
-model = KNeighborsClassifier(n_neighbors=10)
-db = DBPlot(model)
-db.fit(digits.data, digits.target)
-db.plot().show()
-
 if __name__ == "__main__":
     # load data
     X, y = uci_loader.getdataset('wine')
@@ -28,8 +22,7 @@ if __name__ == "__main__":
     y = y[random_idx]
     
     # create model
-    #model = LogisticRegression(C=1)
-    model = SVC(C=0.1, gamma=0.1, probability=True)
+    model = LogisticRegression(C=1)
     #model = RandomForestClassifier(n_estimators=10)
     
     # plot high-dimensional decision boundary

@@ -57,7 +57,7 @@ class DBPlot(BaseEstimator):
         2/3 of n_decision_boundary_keypoints
         
     n_generated_testpoints_per_keypoint : int, optional (default=15)
-        Number of test points generated around decision boundary keypoints, and 
+        Number of demo points generated around decision boundary keypoints, and 
         labeled according to the specified classifier, in order to enrich and 
         validate the decision boundary plot
         
@@ -292,7 +292,7 @@ class DBPlot(BaseEstimator):
         
         generate_background : boolean, optional (default=True)
             Whether to generate faint background plot (using prediction probabilities
-            of a fitted suppor vector machine, trained on generated test points) 
+            of a fitted suppor vector machine, trained on generated demo points) 
             to aid visualization
             
         tune_background_model : boolean, optional (default=False)
@@ -328,7 +328,7 @@ class DBPlot(BaseEstimator):
         
         # decision boundary
         plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600*scatter_size_scale, c='c', marker='p')
-        # generated test points
+        # generated demo points
         plt.scatter(self.X_testpoints_2d[:,0], self.X_testpoints_2d[:,1], 20*scatter_size_scale, c=['g' if i else 'b' for i in self.y_testpoints], alpha=0.6)
         
         # training data
@@ -349,7 +349,7 @@ class DBPlot(BaseEstimator):
             plt.text(self.X2d[i,0]+(self.X2d_xmax-self.X2d_xmin)*0.5e-2, self.X2d[i,1]+(self.X2d_ymax-self.X2d_ymin)*0.5e-2, str(i), size=8)
 
         if legend:
-            plt.legend(["Estimated decision boundary keypoints", "Generated test data around decision boundary", "Actual data (training set)", "Actual data (test set)"], loc="lower right", prop={'size':9})
+            plt.legend(["Estimated decision boundary keypoints", "Generated demo data around decision boundary", "Actual data (training set)", "Actual data (demo set)"], loc="lower right", prop={'size':9})
         
         # decision boundary keypoints, in case not visible in background
         plt.scatter(self.decision_boundary_points_2d[:,0], self.decision_boundary_points_2d[:,1], 600*scatter_size_scale, c='c', marker='p', alpha=0.1)
@@ -363,7 +363,7 @@ class DBPlot(BaseEstimator):
             plt.plot([self.decision_boundary_points_2d[e[0],0], self.decision_boundary_points_2d[e[1],0]], [self.decision_boundary_points_2d[e[0],1], self.decision_boundary_points_2d[e[1],1]], '--k', linewidth=1)
             
         if len(self.test_idx) == 0:
-            print "No test performance calculated, as no testing data was specified"
+            print "No demo performance calculated, as no testing data was specified"
         else:
             freq = itemfreq(self.y[self.test_idx]).astype(float)
             imbalance = np.round(np.max((freq[0,1],freq[1,1]))/len(self.test_idx),3)
@@ -383,12 +383,12 @@ class DBPlot(BaseEstimator):
         Parameters
         ----------
         generate_testpoints : boolean, optional (default=True)
-            Whether to generate test points around the estimated decision boundary
+            Whether to generate demo points around the estimated decision boundary
             as a sanity check
         
         generate_background : boolean, optional (default=True)
             Whether to generate faint background plot (using prediction probabilities
-            of a fitted suppor vector machine, trained on generated test points) 
+            of a fitted suppor vector machine, trained on generated demo points) 
             to aid visualization
             
         tune_background_model : boolean, optional (default=False)
@@ -405,12 +405,12 @@ class DBPlot(BaseEstimator):
             are very close to the true decision boundary
             
         X_testpoints_2d : array
-            Array containing generated test points in the dimensionality-reduced 
+            Array containing generated demo points in the dimensionality-reduced 
             2D space which surround the decision boundary and can be used for 
             visual feedback to estimate which area would be assigned which class
             
         y_testpoints : array
-            Classifier predictions for each of the generated test points
+            Classifier predictions for each of the generated demo points
             
         background: array
             Generated background image showing prediction probabilities of the 
@@ -426,7 +426,7 @@ class DBPlot(BaseEstimator):
         
         if len(self.X_testpoints) == 0 and generate_testpoints:
             if self.verbose:
-                print "Generating test points around decision boundary..."
+                print "Generating demo points around decision boundary..."
             self._generate_testpoints()
             
             if generate_background:
@@ -449,7 +449,7 @@ class DBPlot(BaseEstimator):
             return self.decision_boundary_points_2d, self.X_testpoints_2d, self.y_testpoints
         
     def _generate_testpoints(self, tries=100):
-        """Generate random test points around decision boundary keypoints 
+        """Generate random demo points around decision boundary keypoints 
         """
         nn_model = NearestNeighbors(n_neighbors=3)
         nn_model.fit(self.decision_boundary_points)
@@ -472,7 +472,7 @@ class DBPlot(BaseEstimator):
             maxRadius = radius * 2
             radius /= 5.0
                 
-            # add test points, keeping some balance
+            # add demo points, keeping some balance
             max_imbalance = 5.0
             y_testpoints = []
             for j in range(self.n_generated_testpoints_per_keypoint - 2):
@@ -488,7 +488,7 @@ class DBPlot(BaseEstimator):
                     except: # DR can fail e.g. if NMF gets negative values
                         testpoint = []
                         continue
-                    if euclidean(testpoint2d, self.decision_boundary_points_2d[i]) <= maxRadius: # test point needs to be close to current key point
+                    if euclidean(testpoint2d, self.decision_boundary_points_2d[i]) <= maxRadius: # demo point needs to be close to current key point
                         if not imbalanced: # needs to be not imbalanced
                             break
                         y_pred = self.classifier.predict(testpoint)[0]
