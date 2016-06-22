@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def minimum_spanning_tree(X, copy_X=True):
     """X are edge weights of fully connected graph"""
     if copy_X:
@@ -10,7 +11,7 @@ def minimum_spanning_tree(X, copy_X=True):
     n_vertices = X.shape[0]
     spanning_edges = []
 
-    # initialize with node 0:                                                                                         
+    # initialize with node 0:
     visited_vertices = [0]
     num_visited = 1
     # exclude self connections:
@@ -19,7 +20,7 @@ def minimum_spanning_tree(X, copy_X=True):
 
     while num_visited != n_vertices:
         new_edge = np.argmin(X[visited_vertices], axis=None)
-        # 2d encoding of new_edge from flat, get correct indices                                                      
+        # 2d encoding of new_edge from flat, get correct indices
         new_edge = divmod(new_edge, n_vertices)
         new_edge = [visited_vertices[new_edge[0]], new_edge[1]]
         # add edge to tree
@@ -31,11 +32,12 @@ def minimum_spanning_tree(X, copy_X=True):
         num_visited += 1
     return np.vstack(spanning_edges)
 
+
 def polar_to_cartesian(arr, r):
-    a = np.concatenate((np.array([2*np.pi]), arr))
+    a = np.concatenate((np.array([2 * np.pi]), arr))
     si = np.sin(a)
     si[0] = 1
     si = np.cumprod(si)
     co = np.cos(a)
     co = np.roll(co, -1)
-    return si*co*r
+    return si * co * r
