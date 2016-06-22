@@ -12,7 +12,7 @@ from sklearn.neighbors.classification import KNeighborsClassifier
 
 if __name__ == "__main__":
     # load data
-    X, y = uci_loader.getdataset('heart')
+    X, y = uci_loader.getdataset('iris')
     #data = load_digits(n_class = 2)
     #X,y = data.data, data.target
     y[y != 0] = 1
