@@ -1,19 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as mplt
 import os
-from scipy.stats import itemfreq
 from sklearn.base import BaseEstimator
-from sklearn.cross_validation import train_test_split
-from sklearn.decomposition.pca import PCA
-from sklearn.neighbors.unsupervised import NearestNeighbors
-from sklearn.neighbors.classification import KNeighborsClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import KNeighborsClassifier
 import nlopt
 import random
 from scipy.spatial.distance import euclidean, squareform, pdist
 from utils import minimum_spanning_tree, polar_to_cartesian
-from sklearn.grid_search import GridSearchCV
-from sklearn.svm.classes import SVC
-from sklearn.metrics.classification import accuracy_score, f1_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, f1_score
 
 
 class DBPlot(BaseEstimator):
@@ -77,7 +76,10 @@ class DBPlot(BaseEstimator):
         Verbose output
     """
 
-    def __init__(self, estimator=KNeighborsClassifier(n_neighbors=10), dimensionality_reduction=PCA(n_components=2), acceptance_threshold=0.03, n_decision_boundary_keypoints=60, n_connecting_keypoints=None, n_interpolated_keypoints=None, n_generated_testpoints_per_keypoint=15, linear_iteration_budget=100, hypersphere_iteration_budget=300, verbose=True):
+    def __init__(self, estimator = KNeighborsClassifier(n_neighbors=10), dimensionality_reduction=PCA(n_components=2), 
+                acceptance_threshold=0.03, n_decision_boundary_keypoints=60, n_connecting_keypoints=None, 
+                n_interpolated_keypoints=None, n_generated_testpoints_per_keypoint=15, linear_iteration_budget=100, 
+                hypersphere_iteration_budget=300, verbose=True):
         if acceptance_threshold == 0:
             raise Warning(
                 "A nonzero acceptance threshold is strongly recommended so the optimizer can finish in finite time")
@@ -148,14 +150,14 @@ class DBPlot(BaseEstimator):
         -------
         self : returns an instance of self.
         """
-        if set(np.array(y, dtype=int).tolist()) != set([0, 1]):
+        if set(np.array(y, dtype = int).tolist()) != set([0, 1]):
             raise Exception(
                 "Currently only implemented for binary classification. Make sure you pass in two classes (0 and 1)")
 
         if training_indices == None:
             train_idx = range(len(y))
         elif type(training_indices) == float:
-            train_idx, test_idx = train_test_split(range(len(y)), test_size=0.5)
+            train_idx, test_idx = train_test_split(range(len(y)), test_size = 0.2)
         else:
             train_idx = training_indices
 
@@ -239,7 +241,7 @@ class DBPlot(BaseEstimator):
         # points that are too distant (search on connecting line first, then on
         # surrounding hypersphere surfaces)
         edges, gap_distances, gap_probability_scores = self._get_sorted_db_keypoint_distances()  # find gaps
-        self.nn_model_decision_boundary_points = NearestNeighbors(n_neighbors=2)
+        self.nn_model_decision_boundary_points = NearestNeighbors(n_neighbors = 2)
         self.nn_model_decision_boundary_points.fit(self.decision_boundary_points)
 
         i = 0
@@ -250,7 +252,7 @@ class DBPlot(BaseEstimator):
             if self.random_gap_selection:
                 # randomly sample from sorted DB keypoint gaps?
                 gap_idx = np.random.choice(len(gap_probability_scores),
-                                           1, p=gap_probability_scores)[0]
+                                           1, p = gap_probability_scores)[0]
             else:
                 # get largest gap
                 gap_idx = 0
@@ -310,7 +312,9 @@ class DBPlot(BaseEstimator):
 
         return self
 
-    def plot(self, plt=None, generate_testpoints=True, generate_background=True, tune_background_model=False, background_resolution=100, scatter_size_scale=1.0, legend=True):
+    def plot(self, plt=None, generate_testpoints = True, generate_background = True, tune_background_model = False,
+             background_resolution = 100, scatter_size_scale=1.0, legend=True):
+             
         """Plots the dataset and the identified decision boundary in 2D.
         (If you wish to create custom plots, get the data using generate_plot() and plot it manually)
 
@@ -363,11 +367,11 @@ class DBPlot(BaseEstimator):
 
         # decision boundary
         plt.scatter(self.decision_boundary_points_2d[:, 0], self.decision_boundary_points_2d[
-                    :, 1], 600 * scatter_size_scale, c='c', marker='p')
+                    :, 1], 600 * scatter_size_scale, c ='c', marker = 'p')
         # generated demo points
         if generate_testpoints:
             plt.scatter(self.X_testpoints_2d[:, 0], self.X_testpoints_2d[
-                        :, 1], 20 * scatter_size_scale, c=['g' if i else 'b' for i in self.y_testpoints], alpha=0.6)
+                        :, 1], 20 * scatter_size_scale, c=['g' if i else 'b' for i in self.y_testpoints], alpha = 0.6)
 
         # training data
         plt.scatter(self.X2d[self.train_idx, 0], self.X2d[self.train_idx, 1], 150 * scatter_size_scale,
@@ -413,7 +417,7 @@ class DBPlot(BaseEstimator):
         if len(self.test_idx) == 0:
             print("No demo performance calculated, as no testing data was specified")
         else:
-            freq = itemfreq(self.y[self.test_idx]).astype(float)
+            freq = np.array(np.unique(self.y[self.test_idx], return_counts = True)).T.astype(float)
             imbalance = np.round(np.max((freq[0, 1], freq[1, 1])) / len(self.test_idx), 3)
             acc_score = np.round(accuracy_score(
                 self.y[self.test_idx], self.y_pred[self.test_idx]), 3)
@@ -536,7 +540,7 @@ class DBPlot(BaseEstimator):
             y_testpoints = []
             for j in range(self.n_generated_testpoints_per_keypoint - 2):
                 c_radius = radius
-                freq = itemfreq(y_testpoints).astype(float)
+                freq = np.array(np.unique(y_testpoints, return_counts = True)).T.astype(float)
                 imbalanced = freq.shape[0] != 0
                 if freq.shape[0] == 2 and (freq[0, 1] / freq[1, 1] < 1.0 / max_imbalance or freq[0, 1] / freq[1, 1] > max_imbalance):
                     imbalanced = True
@@ -605,7 +609,7 @@ class DBPlot(BaseEstimator):
         edges = minimum_spanning_tree(squareform(pdist(self.decision_boundary_points_2d)))
         edged = np.array([euclidean(self.decision_boundary_points_2d[u],
                                     self.decision_boundary_points_2d[v]) for u, v in edges])
-        gap_edge_idx = np.argsort(edged)[::-1][:N]
+        gap_edge_idx = np.argsort(edged)[::-1][:int(N)]
         edges = edges[gap_edge_idx]
         gap_distances = np.square(edged[gap_edge_idx])
         gap_probability_scores = gap_distances / np.sum(gap_distances)
@@ -633,7 +637,7 @@ class DBPlot(BaseEstimator):
                         # first attempt failed, try nearest neighbors of source and destination
                         # point instead
                         _, idx = self.nn_model_2d_minorityclass.kneighbors([self.Xminor2d[from_i]])
-                        from_point = self.Xminor[idx[0][k / 2]]
+                        from_point = self.Xminor[idx[0][k // 2]]
                         _, idx = self.nn_model_2d_minorityclass.kneighbors([self.Xmajor2d[to_i]])
                         to_point = self.Xmajor[idx[0][k % 2]]
 

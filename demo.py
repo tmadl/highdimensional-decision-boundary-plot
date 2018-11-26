@@ -2,13 +2,13 @@ import uci_loader
 import numpy as np
 from decisionboundaryplot import DBPlot
 from sklearn.ensemble.forest import RandomForestClassifier
-from sklearn.linear_model.logistic import LogisticRegression
-from sklearn.datasets.base import load_digits
+from sklearn.linear_model import LogisticRegression
+from sklearn.datasets import load_digits
 import matplotlib.pyplot as plt
-from sklearn.learning_curve import learning_curve
+from sklearn.model_selection import learning_curve
 from numpy.random.mtrand import permutation
-from sklearn.svm.classes import SVC
-from sklearn.neighbors.classification import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
 
 if __name__ == "__main__":
     # load data
@@ -28,15 +28,14 @@ if __name__ == "__main__":
 
     # plot high-dimensional decision boundary
     db = DBPlot(model)
-    db.fit(X, y, training_indices=0.5)
-    db.plot(plt, generate_testpoints=True)  # set generate_testpoints=False to speed up plotting
+    db.fit(X, y, training_indices = 0.5)
+    db.plot(plt, generate_testpoints = True )  # set generate_testpoints=False to speed up plotting
     plt.show()
 
     # plot learning curves for comparison
     N = 10
     train_sizes, train_scores, test_scores = learning_curve(
-        model, X, y, cv=5, train_sizes=np.linspace(.2, 1.0, N))
-
+        model, X, y, cv=5)
     plt.errorbar(train_sizes, np.mean(train_scores, axis=1),
                  np.std(train_scores, axis=1) / np.sqrt(N))
     plt.errorbar(train_sizes, np.mean(test_scores, axis=1),
