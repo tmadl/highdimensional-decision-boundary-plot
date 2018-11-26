@@ -24,7 +24,7 @@ def tonumeric(lst):
     return np.array([lbls[unpack(t)] for t in lst.flatten()])
 
 
-def getdataset(datasetname, onehot_encode_strings=True):
+def getdataset(datasetname, onehot_encode_strings = True):
     # load
     dataset = fetch_mldata(datasetname)
     # get X and y
@@ -49,7 +49,7 @@ def getdataset(datasetname, onehot_encode_strings=True):
         if len(cat_ft):
             for i in cat_ft:
                 X[:, i] = tonumeric(X[:, i])
-            X = OneHotEncoder(categorical_features=cat_ft).fit_transform(X)
+            X = OneHotEncoder(categorical_features = cat_ft).fit_transform(X)
     # if sparse, make dense
     try:
         X = X.toarray()

@@ -23,7 +23,7 @@ if __name__ == "__main__":
     y = y[random_idx]
 
     # create model
-    model = LogisticRegression(C=1)
+    model = LogisticRegression(C = 1)
     #model = RandomForestClassifier(n_estimators=10)
 
     # plot high-dimensional decision boundary
@@ -35,11 +35,11 @@ if __name__ == "__main__":
     # plot learning curves for comparison
     N = 10
     train_sizes, train_scores, test_scores = learning_curve(
-        model, X, y, cv=5)
-    plt.errorbar(train_sizes, np.mean(train_scores, axis=1),
-                 np.std(train_scores, axis=1) / np.sqrt(N))
-    plt.errorbar(train_sizes, np.mean(test_scores, axis=1),
-                 np.std(test_scores, axis=1) / np.sqrt(N), c='r')
+        model, X, y, cv = 5)
+    plt.errorbar(train_sizes, np.mean(train_scores, axis = 1),
+                 np.std(train_scores, axis = 1) / np.sqrt(N))
+    plt.errorbar(train_sizes, np.mean(test_scores, axis = 1),
+                 np.std(test_scores, axis = 1) / np.sqrt(N), c = 'r')
 
     plt.legend(["Accuracies on training set", "Accuracies on test set"])
     plt.xlabel("Number of data points")
