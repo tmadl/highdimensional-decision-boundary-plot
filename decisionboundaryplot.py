@@ -1,19 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as mplt
 import os
-from scipy.stats import itemfreq
 from sklearn.base import BaseEstimator
-from sklearn.cross_validation import train_test_split
-from sklearn.decomposition.pca import PCA
-from sklearn.neighbors.unsupervised import NearestNeighbors
-from sklearn.neighbors.classification import KNeighborsClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import KNeighborsClassifier
 import nlopt
 import random
 from scipy.spatial.distance import euclidean, squareform, pdist
 from utils import minimum_spanning_tree, polar_to_cartesian
-from sklearn.grid_search import GridSearchCV
-from sklearn.svm.classes import SVC
-from sklearn.metrics.classification import accuracy_score, f1_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, f1_score
 
 
 class DBPlot(BaseEstimator):
@@ -77,7 +76,10 @@ class DBPlot(BaseEstimator):
         Verbose output
     """
 
-    def __init__(self, estimator=KNeighborsClassifier(n_neighbors=10), dimensionality_reduction=PCA(n_components=2), acceptance_threshold=0.03, n_decision_boundary_keypoints=60, n_connecting_keypoints=None, n_interpolated_keypoints=None, n_generated_testpoints_per_keypoint=15, linear_iteration_budget=100, hypersphere_iteration_budget=300, verbose=True):
+    def __init__(self, estimator = KNeighborsClassifier(n_neighbors = 10), dimensionality_reduction = PCA(n_components = 2), 
+                acceptance_threshold = 0.03, n_decision_boundary_keypoints = 60, n_connecting_keypoints = None, 
+                n_interpolated_keypoints = None, n_generated_testpoints_per_keypoint = 15, linear_iteration_budget = 100, 
+                hypersphere_iteration_budget=300, verbose=True):
         if acceptance_threshold == 0:
             raise Warning(
                 "A nonzero acceptance threshold is strongly recommended so the optimizer can finish in finite time")
@@ -111,7 +113,7 @@ class DBPlot(BaseEstimator):
         self.penalties_enabled = True
         self.random_gap_selection = False
 
-    def setclassifier(self, estimator=KNeighborsClassifier(n_neighbors=10)):
+    def setclassifier(self, estimator=KNeighborsClassifier(n_neighbors = 10)):
         """Assign classifier for which decision boundary should be plotted.
 
         Parameters
@@ -124,7 +126,7 @@ class DBPlot(BaseEstimator):
         """
         self.classifier = estimator
 
-    def fit(self, X, y, training_indices=None):
+    def fit(self, X, y, training_indices = None):
         """Specify data to be plotted, and fit classifier only if required (the
         specified clasifier is only trained if it has not been trained yet).
 
@@ -148,14 +150,14 @@ class DBPlot(BaseEstimator):
         -------
         self : returns an instance of self.
         """
-        if set(np.array(y, dtype=int).tolist()) != set([0, 1]):
+        if set(np.array(y, dtype = int).tolist()) != set([0, 1]):
             raise Exception(
                 "Currently only implemented for binary classification. Make sure you pass in two classes (0 and 1)")
 
         if training_indices == None:
             train_idx = range(len(y))
         elif type(training_indices) == float:
-            train_idx, test_idx = train_test_split(range(len(y)), test_size=0.5)
+            train_idx, test_idx = train_test_split(range(len(y)), test_size = 0.2)
         else:
             train_idx = training_indices
 
@@ -199,10 +201,10 @@ class DBPlot(BaseEstimator):
         self.Xminor2d, self.Xmajor2d = self.X2d[minority_idx], self.X2d[majority_idx]
 
         # set up efficient nearest neighbor models for later use
-        self.nn_model_2d_majorityclass = NearestNeighbors(n_neighbors=2)
+        self.nn_model_2d_majorityclass = NearestNeighbors(n_neighbors = 2)
         self.nn_model_2d_majorityclass.fit(self.X2d[majority_idx, :])
 
-        self.nn_model_2d_minorityclass = NearestNeighbors(n_neighbors=2)
+        self.nn_model_2d_minorityclass = NearestNeighbors(n_neighbors = 2)
         self.nn_model_2d_minorityclass.fit(self.X2d[minority_idx, :])
 
         # step 1. look for decision boundary points between corners of majority &
@@ -219,7 +221,7 @@ class DBPlot(BaseEstimator):
 
         # optimize to find new db keypoints between corners
         self._linear_decision_boundary_optimization(
-            minority_corner_idx, majority_corner_idx, all_combinations=True, step=1)
+            minority_corner_idx, majority_corner_idx, all_combinations = True, step = 1)
 
         # step 2. look for decision boundary points on lines connecting randomly
         # sampled points of majority & minority class
@@ -229,7 +231,7 @@ class DBPlot(BaseEstimator):
 
         # optimize to find new db keypoints between minority and majority class
         self._linear_decision_boundary_optimization(
-            from_idx, to_idx, all_combinations=False, step=2)
+            from_idx, to_idx, all_combinations = False, step = 2)
 
         if len(self.decision_boundary_points_2d) < 2:
             print("Failed to find initial decision boundary. Retrying... If this keeps happening, increasing the acceptance threshold might help. Also, make sure the classifier is able to find a point with 0.5 prediction probability (usually requires an even number of estimators/neighbors/etc).")
@@ -239,7 +241,7 @@ class DBPlot(BaseEstimator):
         # points that are too distant (search on connecting line first, then on
         # surrounding hypersphere surfaces)
         edges, gap_distances, gap_probability_scores = self._get_sorted_db_keypoint_distances()  # find gaps
-        self.nn_model_decision_boundary_points = NearestNeighbors(n_neighbors=2)
+        self.nn_model_decision_boundary_points = NearestNeighbors(n_neighbors = 2)
         self.nn_model_decision_boundary_points.fit(self.decision_boundary_points)
 
         i = 0
@@ -250,7 +252,7 @@ class DBPlot(BaseEstimator):
             if self.random_gap_selection:
                 # randomly sample from sorted DB keypoint gaps?
                 gap_idx = np.random.choice(len(gap_probability_scores),
-                                           1, p=gap_probability_scores)[0]
+                                           1, p = gap_probability_scores)[0]
             else:
                 # get largest gap
                 gap_idx = 0
@@ -310,7 +312,9 @@ class DBPlot(BaseEstimator):
 
         return self
 
-    def plot(self, plt=None, generate_testpoints=True, generate_background=True, tune_background_model=False, background_resolution=100, scatter_size_scale=1.0, legend=True):
+    def plot(self, plt = None, generate_testpoints = True, generate_background = True, tune_background_model = False,
+             background_resolution = 100, scatter_size_scale = 1.0, legend = True):
+             
         """Plots the dataset and the identified decision boundary in 2D.
         (If you wish to create custom plots, get the data using generate_plot() and plot it manually)
 
@@ -351,51 +355,51 @@ class DBPlot(BaseEstimator):
             plt = mplt
 
         if len(self.X_testpoints) == 0:
-            self.generate_plot(generate_testpoints=generate_testpoints, generate_background=generate_background,
-                               tune_background_model=tune_background_model, background_resolution=background_resolution)
+            self.generate_plot(generate_testpoints = generate_testpoints, generate_background = generate_background,
+                               tune_background_model = tune_background_model, background_resolution = background_resolution)
 
         if generate_background and generate_testpoints:
             try:
-                plt.imshow(np.flipud(self.background), extent=[
-                           self.X2d_xmin, self.X2d_xmax, self.X2d_ymin, self.X2d_ymax], cmap="GnBu", alpha=0.33)
+                plt.imshow(np.flipud(self.background), extent = [
+                           self.X2d_xmin, self.X2d_xmax, self.X2d_ymin, self.X2d_ymax], cmap = "GnBu", alpha = 0.33)
             except (Exception, ex):
                 print("Failed to render image background")
 
         # decision boundary
         plt.scatter(self.decision_boundary_points_2d[:, 0], self.decision_boundary_points_2d[
-                    :, 1], 600 * scatter_size_scale, c='c', marker='p')
+                    :, 1], 600 * scatter_size_scale, c ='c', marker = 'p')
         # generated demo points
         if generate_testpoints:
             plt.scatter(self.X_testpoints_2d[:, 0], self.X_testpoints_2d[
-                        :, 1], 20 * scatter_size_scale, c=['g' if i else 'b' for i in self.y_testpoints], alpha=0.6)
+                        :, 1], 20 * scatter_size_scale, c = ['g' if i else 'b' for i in self.y_testpoints], alpha = 0.6)
 
         # training data
         plt.scatter(self.X2d[self.train_idx, 0], self.X2d[self.train_idx, 1], 150 * scatter_size_scale,
                     facecolor=['g' if i else 'b' for i in self.y[self.train_idx]],
                     edgecolor=['g' if self.y_pred[self.train_idx[i]] == self.y[self.train_idx[i]] == 1
                                else ('b' if self.y_pred[self.train_idx[i]] == self.y[self.train_idx[i]] == 0 else 'r')
-                               for i in range(len(self.train_idx))], linewidths=5 * scatter_size_scale)
+                               for i in range(len(self.train_idx))], linewidths = 5 * scatter_size_scale)
         # testing data
         plt.scatter(self.X2d[self.test_idx, 0], self.X2d[self.test_idx, 1], 150 * scatter_size_scale,
                     facecolor=['g' if i else 'b' for i in self.y[self.test_idx]],
                     edgecolor=['g' if self.y_pred[self.test_idx[i]] == self.y[self.test_idx[i]] == 1
                                else ('b' if self.y_pred[self.test_idx[i]] == self.y[self.test_idx[i]] == 0 else 'r')
-                               for i in range(len(self.test_idx))], linewidths=5 * scatter_size_scale, marker='s')
+                               for i in range(len(self.test_idx))], linewidths=5 * scatter_size_scale, marker = 's')
 
         # label data points with their indices
         for i in range(len(self.X2d)):
             plt.text(self.X2d[i, 0] + (self.X2d_xmax - self.X2d_xmin) * 0.5e-2,
-                     self.X2d[i, 1] + (self.X2d_ymax - self.X2d_ymin) * 0.5e-2, str(i), size=8)
+                     self.X2d[i, 1] + (self.X2d_ymax - self.X2d_ymin) * 0.5e-2, str(i), size = 8)
 
         if legend:
             plt.legend(["Estimated decision boundary keypoints", "Generated demo data around decision boundary",
-                        "Actual data (training set)", "Actual data (demo set)"], loc="lower right", prop={'size': 9})
+                        "Actual data (training set)", "Actual data (demo set)"], loc = "lower right", prop = {'size': 9})
 
         # decision boundary keypoints, in case not visible in background
         plt.scatter(self.decision_boundary_points_2d[:, 0], self.decision_boundary_points_2d[:, 1],
-                    600 * scatter_size_scale, c='c', marker='p', alpha=0.1)
+                    600 * scatter_size_scale, c = 'c', marker = 'p', alpha = 0.1)
         plt.scatter(self.decision_boundary_points_2d[:, 0], self.decision_boundary_points_2d[:, 1],
-                    30 * scatter_size_scale, c='c', marker='p', edgecolor='c', alpha=0.8)
+                    30 * scatter_size_scale, c = 'c', marker = 'p', edgecolor = 'c', alpha = 0.8)
 
         # minimum spanning tree through decision boundary keypoints
         D = pdist(self.decision_boundary_points_2d)
@@ -404,16 +408,16 @@ class DBPlot(BaseEstimator):
             plt.plot([self.decision_boundary_points_2d[e[0], 0], self.decision_boundary_points_2d[e[1], 0]],
                      [self.decision_boundary_points_2d[e[0], 1],
                          self.decision_boundary_points_2d[e[1], 1]],
-                     '--c', linewidth=4 * scatter_size_scale)
+                     '--c', linewidth = 4 * scatter_size_scale)
             plt.plot([self.decision_boundary_points_2d[e[0], 0], self.decision_boundary_points_2d[e[1], 0]],
                      [self.decision_boundary_points_2d[e[0], 1],
                          self.decision_boundary_points_2d[e[1], 1]],
-                     '--k', linewidth=1)
+                     '--k', linewidth = 1)
 
         if len(self.test_idx) == 0:
             print("No demo performance calculated, as no testing data was specified")
         else:
-            freq = itemfreq(self.y[self.test_idx]).astype(float)
+            freq = np.array(np.unique(self.y[self.test_idx], return_counts = True)).T.astype(float)
             imbalance = np.round(np.max((freq[0, 1], freq[1, 1])) / len(self.test_idx), 3)
             acc_score = np.round(accuracy_score(
                 self.y[self.test_idx], self.y_pred[self.test_idx]), 3)
@@ -426,7 +430,7 @@ class DBPlot(BaseEstimator):
 
         return plt
 
-    def generate_plot(self, generate_testpoints=True, generate_background=True, tune_background_model=False, background_resolution=100):
+    def generate_plot(self, generate_testpoints = True, generate_background = True, tune_background_model = False, background_resolution = 100):
         """Generates and returns arrays for visualizing the dataset and the
         identified decision boundary in 2D.
 
@@ -483,14 +487,14 @@ class DBPlot(BaseEstimator):
                 if tune_background_model:
                     params = {'C': np.power(10, np.linspace(0, 2, 2)),
                               'gamma': np.power(10, np.linspace(-2, 0, 2))}
-                    grid = GridSearchCV(SVC(), params, n_jobs=-1 if os.name != 'nt' else 1)
+                    grid = GridSearchCV(SVC(), params, n_jobs = -1 if os.name != 'nt' else 1)
                     grid.fit(np.vstack((self.X2d[self.train_idx], self.X_testpoints_2d)), np.hstack(
                         (self.y[self.train_idx], self.y_testpoints)))
                     bestparams = grid.best_params_
                 else:
                     bestparams = {'C': 1, 'gamma': 1}
 
-                self.background_model = SVC(probability=True, C=bestparams['C'], gamma=bestparams['gamma']).fit(np.vstack(
+                self.background_model = SVC(probability = True, C = bestparams['C'], gamma = bestparams['gamma']).fit(np.vstack(
                     (self.X2d[self.train_idx], self.X_testpoints_2d)), np.hstack((self.y[self.train_idx], self.y_testpoints)))
                 xx, yy = np.meshgrid(np.linspace(self.X2d_xmin, self.X2d_xmax, background_resolution), np.linspace(
                     self.X2d_ymin, self.X2d_ymax, background_resolution))
@@ -505,13 +509,13 @@ class DBPlot(BaseEstimator):
         else:
             return self.decision_boundary_points_2d
 
-    def _generate_testpoints(self, tries=100):
+    def _generate_testpoints(self, tries = 100):
         """Generate random demo points around decision boundary keypoints
         """
-        nn_model = NearestNeighbors(n_neighbors=3)
+        nn_model = NearestNeighbors(n_neighbors = 3)
         nn_model.fit(self.decision_boundary_points)
 
-        nn_model_2d = NearestNeighbors(n_neighbors=2)
+        nn_model_2d = NearestNeighbors(n_neighbors = 2)
         nn_model_2d.fit(self.decision_boundary_points_2d)
         #max_radius = 2*np.max([nn_model_2d.kneighbors([self.decision_boundary_points_2d[i]])[0][0][1] for i in range(len(self.decision_boundary_points_2d))])
 
@@ -536,7 +540,7 @@ class DBPlot(BaseEstimator):
             y_testpoints = []
             for j in range(self.n_generated_testpoints_per_keypoint - 2):
                 c_radius = radius
-                freq = itemfreq(y_testpoints).astype(float)
+                freq = np.array(np.unique(y_testpoints, return_counts = True)).T.astype(float)
                 imbalanced = freq.shape[0] != 0
                 if freq.shape[0] == 2 and (freq[0, 1] / freq[1, 1] < 1.0 / max_imbalance or freq[0, 1] / freq[1, 1] > max_imbalance):
                     imbalanced = True
@@ -572,7 +576,7 @@ class DBPlot(BaseEstimator):
         self.y_testpoints = self.y_testpoints[idx_within_bounds]
         self.X_testpoints_2d = self.X_testpoints_2d[idx_within_bounds]
 
-    def decision_boundary_distance(self, x, grad=0):
+    def decision_boundary_distance(self, x, grad = 0):
         """Returns the distance of the given point from the decision boundary,
         i.e. the distance from the region with maximal uncertainty (0.5
         prediction probability)"""
@@ -596,7 +600,7 @@ class DBPlot(BaseEstimator):
             raise Exception("Please call the fit method first!")
         return self.decision_boundary_points, self.decision_boundary_points_2d
 
-    def _get_sorted_db_keypoint_distances(self, N=None):
+    def _get_sorted_db_keypoint_distances(self, N = None):
         """Use a minimum spanning tree heuristic to find the N largest gaps in the
         line constituted by the current decision boundary keypoints.
         """
@@ -605,7 +609,7 @@ class DBPlot(BaseEstimator):
         edges = minimum_spanning_tree(squareform(pdist(self.decision_boundary_points_2d)))
         edged = np.array([euclidean(self.decision_boundary_points_2d[u],
                                     self.decision_boundary_points_2d[v]) for u, v in edges])
-        gap_edge_idx = np.argsort(edged)[::-1][:N]
+        gap_edge_idx = np.argsort(edged)[::-1][:int(N)]
         edges = edges[gap_edge_idx]
         gap_distances = np.square(edged[gap_edge_idx])
         gap_probability_scores = gap_distances / np.sum(gap_distances)
@@ -633,7 +637,7 @@ class DBPlot(BaseEstimator):
                         # first attempt failed, try nearest neighbors of source and destination
                         # point instead
                         _, idx = self.nn_model_2d_minorityclass.kneighbors([self.Xminor2d[from_i]])
-                        from_point = self.Xminor[idx[0][k / 2]]
+                        from_point = self.Xminor[idx[0][k // 2]]
                         _, idx = self.nn_model_2d_minorityclass.kneighbors([self.Xmajor2d[to_i]])
                         to_point = self.Xmajor[idx[0][k % 2]]
 
@@ -641,7 +645,7 @@ class DBPlot(BaseEstimator):
                         break  # no decision boundary between equivalent points
 
                     db_point = self._find_decision_boundary_along_line(
-                        from_point, to_point, penalize_tangent_distance=self.penalties_enabled, penalize_extremes=self.penalties_enabled)
+                        from_point, to_point, penalize_tangent_distance = self.penalties_enabled, penalize_extremes = self.penalties_enabled)
 
                     if self.decision_boundary_distance(db_point) <= self.acceptance_threshold:
                         db_point2d = self.dimensionality_reduction.transform([db_point])[0]
@@ -657,8 +661,8 @@ class DBPlot(BaseEstimator):
                                 msg = "{} {}/{}: Rejected decision boundary keypoint (outside of plot area)"
                                 print(msg.format(step_str, i * n + j, len(from_idx) * n))
 
-    def _find_decision_boundary_along_line(self, from_point, to_point, penalize_extremes=False, penalize_tangent_distance=False):
-        def objective(l, grad=0):
+    def _find_decision_boundary_along_line(self, from_point, to_point, penalize_extremes = False, penalize_tangent_distance = False):
+        def objective(l, grad = 0):
             # interpolate between source and destionation; calculate distance from
             # decision boundary
             X = from_point + l[0] * (to_point - from_point)
@@ -683,8 +687,8 @@ class DBPlot(BaseEstimator):
         db_point = from_point + cl[0] * (to_point - from_point)
         return db_point
 
-    def _find_decision_boundary_on_hypersphere(self, centroid, R, penalize_known=False):
-        def objective(phi, grad=0):
+    def _find_decision_boundary_on_hypersphere(self, centroid, R, penalize_known  =False):
+        def objective(phi, grad = 0):
             # search on hypersphere surface in polar coordinates - map back to cartesian
             cx = centroid + polar_to_cartesian(phi, R)
             try:
@@ -703,13 +707,13 @@ class DBPlot(BaseEstimator):
                 return np.infty
 
         optimizer = self._get_optimizer(
-            D=self.X.shape[1] - 1, upper_bound=2 * np.pi, iteration_budget=self.hypersphere_iteration_budget)
+            D = self.X.shape[1] - 1, upper_bound = 2 * np.pi, iteration_budget = self.hypersphere_iteration_budget)
         optimizer.set_min_objective(objective)
         db_phi = optimizer.optimize([rnd.random() * 2 * np.pi for k in range(self.X.shape[1] - 1)])
         db_point = centroid + polar_to_cartesian(db_phi, R)
         return db_point
 
-    def _get_optimizer(self, D=1, upper_bound=1, iteration_budget=None):
+    def _get_optimizer(self, D = 1, upper_bound = 1, iteration_budget = None):
         """Utility function creating an NLOPT optimizer with default
         parameters depending on this objects parameters
         """
