@@ -1,5 +1,5 @@
-Plotting high-dimensional decision boundaries
-===============
+# Plotting high-dimensional decision boundaries
+
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 ![stability-experimental](https://img.shields.io/badge/stability-experimental-orange.svg)
@@ -18,8 +18,8 @@ Instead, the present method samples from regions in which the given classifier i
 **Example use case**: visualizing **overfitting** and **underfitting**. Left: k-nearest neighbor with k=2 neighbors. Overfits: data points misclassified (highlighted in red) due to useless 'squiggles'. Right: over-regularized support vector machine (`C=1`, `gamma=0.07`). Misses the data point on the left (marked in red) due to underfitting. Data: UCI wine dataset (13 dimensions).
 ![Wine data - decision boundary comparison](img/wine_knn_svc.png)
 
-Usage
-===============
+## Usage
+
 
 The project requires [scikit-learn](http://scikit-learn.org/stable/install.html), [matplotlib](http://matplotlib.org/users/installing.html) and [NLopt](http://ab-initio.mit.edu/wiki/index.php/NLopt_Installation) to run.
 
@@ -35,8 +35,8 @@ db.plot().show() # use db.plot(generate_testpoints=False).show() to speed up plo
 # decision_boundary_points_2d, testpoints_2d, y_testpoints, background = db.generate_plot() # for custom plotting and analysis
 ```
 
-Functionality and reliability
-===============
+## Functionality & Reliability
+
 
 Note: **this is an early stage research project, and work in progress** (it is by no means efficient or well tested)!
 
@@ -59,3 +59,12 @@ Everything else is a rough estimate intended for facilitating intuition, rather 
 - The background shading reflects rough probability scores around the decision boundary, estimated from the generated test data points (its accuracy will depend on the number and coverage of these generated data points). As above, it is NOT a full picture (the generated data points do not provide full coverage, and only cover the space between the two classes, not beyond). To increase reliability, increase `n_generated_testpoints_per_keypoint` (or tweak the internal SVC approximating them in order to render the shading, e.g. by enabling `tune_background_model=True` for the plot)
 
 All plotted information is subject to the limitations inherent in forcing high-dimensional data into a low-dimensional plot.
+
+## Installation
+Clone the repo, navigate to the repo directory and run the follwing two commands:
+```
+pip install -r requirements
+```
+```
+conda install -c conda-forge nlopt 
+```
