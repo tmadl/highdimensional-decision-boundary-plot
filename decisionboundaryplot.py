@@ -458,7 +458,7 @@ class DBPlot(BaseEstimator):
         plt.scatter(
             self.X2d[self.train_idx, 0],
             self.X2d[self.train_idx, 1],
-            150 * scatter_size_scale,
+            40 * scatter_size_scale,
             facecolor=["g" if i else "b" for i in self.y[self.train_idx]],
             edgecolor=[
                 "g"
@@ -981,7 +981,7 @@ class DBPlot(BaseEstimator):
         )
         optimizer.set_min_objective(objective)
         db_phi = optimizer.optimize(
-            [rnd.random() * 2 * np.pi for k in range(self.X.shape[1] - 1)]
+            [random.random() * 2 * np.pi for k in range(self.X.shape[1] - 1)]
         )
         db_point = centroid + polar_to_cartesian(db_phi, R)
         return db_point

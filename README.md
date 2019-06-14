@@ -1,5 +1,9 @@
 Plotting high-dimensional decision boundaries
 ===============
+[![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
+[![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
+![stability-experimental](https://img.shields.io/badge/stability-experimental-orange.svg)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/python/black)
 
 An experimental, scikit-learn compatible approach to **plot high-dimensional decision boundaries**. This facilitates **intuitive understanding**, and helps improve models by allowing the **visual inspection** of misclassified regions, model complexity, and the amount of overfitting/underfitting (augmenting more reliable but less intuitive tools such as training/test error curves and ROC curves); as well as of individual data points and their contribution to the decision surface. Finally, it shows which regions are likely to be misclassified, which are uncertain, and (in applications were active querying is possible) the proximity of which instances should be queried. 
 

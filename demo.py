@@ -1,7 +1,7 @@
 import uci_loader
 import numpy as np
 from decisionboundaryplot import DBPlot
-from sklearn.ensemble.forest import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.datasets import load_digits
 import matplotlib.pyplot as plt
@@ -32,6 +32,7 @@ if __name__ == "__main__":
     db.plot(
         plt, generate_testpoints=True
     )  # set generate_testpoints=False to speed up plotting
+    
     plt.show()
 
     # plot learning curves for comparison

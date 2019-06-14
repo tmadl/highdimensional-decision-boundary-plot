@@ -1,4 +1,4 @@
-from sklearn.datasets import fetch_mldata
+from sklearn.datasets import fetch_openml
 from sklearn.preprocessing import OneHotEncoder
 import numpy as np
 
@@ -26,7 +26,7 @@ def tonumeric(lst):
 
 def getdataset(datasetname, onehot_encode_strings=True):
     # load
-    dataset = fetch_mldata(datasetname)
+    dataset = fetch_openml(datasetname)
     # get X and y
     X = dshape(dataset.data)
     try:
