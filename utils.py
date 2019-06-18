@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def minimum_spanning_tree(X, copy_X = True):
+def minimum_spanning_tree(X, copy_X=True):
     """X are edge weights of fully connected graph"""
     if copy_X:
         X = X.copy()
